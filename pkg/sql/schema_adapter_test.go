@@ -3,7 +3,7 @@ package sql_test
 import (
 	"strings"
 
-	"github.com/ThreeDotsLabs/watermill/message/infrastructure/sql"
+	"github.com/ThreeDotsLabs/watermill-sql/pkg/sql"
 )
 
 // testSchema makes the following changes to DefaultSchema to comply with tests:

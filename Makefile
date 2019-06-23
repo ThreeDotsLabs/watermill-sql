@@ -23,11 +23,18 @@ validate_examples:
 	go run dev/update-examples-deps/main.go
 	bash dev/validate_examples.sh
 
-generate_gomod:
+
+fmt:
+	go fmt ./...
+	goimports -l -w .
+
+generate_gomod: fmt
 	rm go.mod go.sum || true
 	go mod init github.com/ThreeDotsLabs/watermill-sql
 # todo - change to last release
 	go get github.com/ThreeDotsLabs/watermill@moved-pubsubs
+
+	find . -type f -iname '*.go' -exec sed -i -E "s/github\.com\/ThreeDotsLabs\/watermill\/message\/infrastructure\/(amqp|googlecloud|http|io|kafka|nats|sql)/github.com\/ThreeDotsLabs\/watermill-\1\/pkg\/\1/" "{}" +;
 
 	go install ./...
 	sed -i '\|go |d' go.mod

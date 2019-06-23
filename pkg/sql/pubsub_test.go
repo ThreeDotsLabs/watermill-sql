@@ -9,7 +9,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/infrastructure"
-	"github.com/ThreeDotsLabs/watermill/message/infrastructure/sql"
+	"github.com/ThreeDotsLabs/watermill-sql/pkg/sql"
 
 	driver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"
