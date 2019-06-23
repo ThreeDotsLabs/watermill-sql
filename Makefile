@@ -28,17 +28,16 @@ fmt:
 	go fmt ./...
 	goimports -l -w .
 
-generate_gomod: fmt
+generate_gomod:
 	rm go.mod go.sum || true
 	go mod init github.com/ThreeDotsLabs/watermill-sql
 # todo - change to last release
-	go get github.com/ThreeDotsLabs/watermill@moved-pubsubs
-
-	find . -type f -iname '*.go' -exec sed -i -E "s/github\.com\/ThreeDotsLabs\/watermill\/message\/infrastructure\/(amqp|googlecloud|http|io|kafka|nats|sql)/github.com\/ThreeDotsLabs\/watermill-\1\/pkg\/\1/" "{}" +;
+	go get github.com/ThreeDotsLabs/watermill@master
 
 	go install ./...
 	sed -i '\|go |d' go.mod
 	go mod edit -fmt
+	go mod tidy
 
 mycli:
 	@mycli -h 127.0.0.1 -u root -p secret
