@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/ThreeDotsLabs/watermill/message/infrastructure"
 	"github.com/ThreeDotsLabs/watermill-sql/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 
 	driver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"
@@ -89,14 +89,14 @@ func createPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 }
 
 func TestPublishSubscribe(t *testing.T) {
-	features := infrastructure.Features{
+	features := tests.Features{
 		ConsumerGroups:      true,
 		ExactlyOnceDelivery: true,
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}
 
-	infrastructure.TestPubSub(
+	tests.TestPubSub(
 		t,
 		features,
 		createPubSub,

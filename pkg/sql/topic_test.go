@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill-sql/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill/message"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
