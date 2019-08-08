@@ -1,7 +1,7 @@
 module github.com/ThreeDotsLabs/watermill-sql
 
 require (
-	github.com/ThreeDotsLabs/watermill v1.0.0-rc.1
+	github.com/ThreeDotsLabs/watermill v1.0.0-rc.2
 	github.com/go-sql-driver/mysql v1.4.1
 	github.com/oklog/ulid v1.3.1
 	github.com/pkg/errors v0.8.1
