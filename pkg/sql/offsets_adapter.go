@@ -71,7 +71,7 @@ func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(
 	consumerGroup string,
 	consumerULID []byte,
 ) (string, []interface{}) {
-	// offset_consumed is not queried anywhere, it'a used only to detect race conditions with NextOffsetQuery.
+	// offset_consumed is not queried anywhere, it's used only to detect race conditions with NextOffsetQuery.
 	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (offset_consumed, consumer_group)
 		VALUES (?, ?) ON DUPLICATE KEY UPDATE offset_consumed=VALUES(offset_consumed)`
 	return ackQuery, []interface{}{offset, consumerGroup}
