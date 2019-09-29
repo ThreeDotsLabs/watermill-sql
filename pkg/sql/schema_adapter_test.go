@@ -32,18 +32,18 @@ func TestDefaultMySQLSchema(t *testing.T) {
 	testOneMessage(t, publisher, subscriber)
 }
 
-func TestDefaultPostgresSchema(t *testing.T) {
-	db := newPostgres(t)
+func TestDefaultPostgreSQLSchema(t *testing.T) {
+	db := newPostgreSQL(t)
 
 	publisher, err := sql.NewPublisher(db, sql.PublisherConfig{
-		SchemaAdapter:        sql.DefaultPostgresSchema{},
+		SchemaAdapter:        sql.DefaultPostgreSQLSchema{},
 		AutoInitializeSchema: true,
 	}, logger)
 	require.NoError(t, err)
 
 	subscriber, err := sql.NewSubscriber(db, sql.SubscriberConfig{
-		SchemaAdapter:    sql.DefaultPostgresSchema{},
-		OffsetsAdapter:   sql.DefaultPostgresOffsetsAdapter{},
+		SchemaAdapter:    sql.DefaultPostgreSQLSchema{},
+		OffsetsAdapter:   sql.DefaultPostgreSQLOffsetsAdapter{},
 		InitializeSchema: true,
 	}, logger)
 	require.NoError(t, err)
@@ -90,11 +90,11 @@ func (s *testMySQLSchema) SchemaInitializingQueries(topic string) []string {
 	return []string{createMessagesTable}
 }
 
-type testPostgresSchema struct {
-	sql.DefaultPostgresSchema
+type testPostgreSQLSchema struct {
+	sql.DefaultPostgreSQLSchema
 }
 
-func (s *testPostgresSchema) SchemaInitializingQueries(topic string) []string {
+func (s *testPostgreSQLSchema) SchemaInitializingQueries(topic string) []string {
 	createMessagesTable := strings.Join([]string{
 		"CREATE TABLE IF NOT EXISTS " + s.MessagesTable(topic) + " (",
 		`"offset" SERIAL,`,

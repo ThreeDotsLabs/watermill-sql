@@ -69,7 +69,7 @@ func newMySQL(t *testing.T) *stdSQL.DB {
 	return db
 }
 
-func newPostgres(t *testing.T) *stdSQL.DB {
+func newPostgreSQL(t *testing.T) *stdSQL.DB {
 	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
 	if addr == "" {
 		addr = "localhost"
@@ -107,26 +107,26 @@ func createMySQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 	return createMySQLPubSubWithConsumerGroup(t, "test")
 }
 
-func createPostgresPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
-	schemaAdapter := &testPostgresSchema{
-		sql.DefaultPostgresSchema{
+func createPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+	schemaAdapter := &testPostgreSQLSchema{
+		sql.DefaultPostgreSQLSchema{
 			GenerateMessagesTableName: func(topic string) string {
 				return fmt.Sprintf(`"test_%s"`, topic)
 			},
 		},
 	}
 
-	offsetsAdapter := sql.DefaultPostgresOffsetsAdapter{
+	offsetsAdapter := sql.DefaultPostgreSQLOffsetsAdapter{
 		GenerateMessagesOffsetsTableName: func(topic string) string {
 			return fmt.Sprintf(`"test_offsets_%s"`, topic)
 		},
 	}
 
-	return newPubSub(t, newPostgres(t), consumerGroup, schemaAdapter, offsetsAdapter)
+	return newPubSub(t, newPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
 }
 
-func createPostgresPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
-	return createPostgresPubSubWithConsumerGroup(t, "test")
+func createPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
+	return createPostgreSQLPubSubWithConsumerGroup(t, "test")
 }
 
 func TestMySQLPublishSubscribe(t *testing.T) {
@@ -145,7 +145,7 @@ func TestMySQLPublishSubscribe(t *testing.T) {
 	)
 }
 
-func TestPostgresPublishSubscribe(t *testing.T) {
+func TestPostgreSQLPublishSubscribe(t *testing.T) {
 	features := tests.Features{
 		ConsumerGroups:      true,
 		ExactlyOnceDelivery: true,
@@ -156,7 +156,7 @@ func TestPostgresPublishSubscribe(t *testing.T) {
 	tests.TestPubSub(
 		t,
 		features,
-		createPostgresPubSub,
-		createPostgresPubSubWithConsumerGroup,
+		createPostgreSQLPubSub,
+		createPostgreSQLPubSubWithConsumerGroup,
 	)
 }
