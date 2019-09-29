@@ -13,6 +13,8 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
+// TestDefaultMySQLSchema checks if the SQL schema defined in DefaultMySQLSchema is correctly executed
+// and if message marshaling works as intended.
 func TestDefaultMySQLSchema(t *testing.T) {
 	db := newMySQL(t)
 
@@ -32,6 +34,8 @@ func TestDefaultMySQLSchema(t *testing.T) {
 	testOneMessage(t, publisher, subscriber)
 }
 
+// TestDefaultPostgreSQLSchema checks if the SQL schema defined in DefaultPostgreSQLSchema is correctly executed
+// and if message marshaling works as intended.
 func TestDefaultPostgreSQLSchema(t *testing.T) {
 	db := newPostgreSQL(t)
 
