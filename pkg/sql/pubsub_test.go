@@ -2,6 +2,7 @@ package sql_test
 
 import (
 	stdSQL "database/sql"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 
 	driver "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,20 +21,7 @@ var (
 	logger = watermill.NewStdLogger(true, true)
 )
 
-func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string) (message.Publisher, message.Subscriber) {
-	schemaAdapter := &testSchema{
-		sql.DefaultSchema{
-			GenerateMessagesTableName: func(topic string) string {
-				return "`test_" + topic + "`"
-			},
-		},
-	}
-	offsetsAdapter := sql.DefaultMySQLOffsetsAdapter{
-		GenerateMessagesOffsetsTableName: func(topic string) string {
-			return "`test_offsets_" + topic + "`"
-		},
-	}
-
+func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
 	publisher, err := sql.NewPublisher(
 		db,
 		sql.PublisherConfig{
@@ -80,15 +69,67 @@ func newMySQL(t *testing.T) *stdSQL.DB {
 	return db
 }
 
-func createPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
-	return newPubSub(t, newMySQL(t), consumerGroup)
+func newPostgreSQL(t *testing.T) *stdSQL.DB {
+	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
+	if addr == "" {
+		addr = "localhost"
+	}
+
+	connStr := fmt.Sprintf("postgres://watermill:password@%s/watermill?sslmode=disable", addr)
+	db, err := stdSQL.Open("postgres", connStr)
+	require.NoError(t, err)
+
+	err = db.Ping()
+	require.NoError(t, err)
+
+	return db
 }
 
-func createPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
-	return createPubSubWithConsumerGroup(t, "test")
+func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+	schemaAdapter := &testMySQLSchema{
+		sql.DefaultMySQLSchema{
+			GenerateMessagesTableName: func(topic string) string {
+				return fmt.Sprintf("`test_%s`", topic)
+			},
+		},
+	}
+
+	offsetsAdapter := sql.DefaultMySQLOffsetsAdapter{
+		GenerateMessagesOffsetsTableName: func(topic string) string {
+			return fmt.Sprintf("`test_offsets_%s`", topic)
+		},
+	}
+
+	return newPubSub(t, newMySQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
 }
 
-func TestPublishSubscribe(t *testing.T) {
+func createMySQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
+	return createMySQLPubSubWithConsumerGroup(t, "test")
+}
+
+func createPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+	schemaAdapter := &testPostgreSQLSchema{
+		sql.DefaultPostgreSQLSchema{
+			GenerateMessagesTableName: func(topic string) string {
+				return fmt.Sprintf(`"test_%s"`, topic)
+			},
+		},
+	}
+
+	offsetsAdapter := sql.DefaultPostgreSQLOffsetsAdapter{
+		GenerateMessagesOffsetsTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_offsets_%s"`, topic)
+		},
+	}
+
+	return newPubSub(t, newPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
+}
+
+func createPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
+	return createPostgreSQLPubSubWithConsumerGroup(t, "test")
+}
+
+func TestMySQLPublishSubscribe(t *testing.T) {
 	features := tests.Features{
 		ConsumerGroups:      true,
 		ExactlyOnceDelivery: true,
@@ -99,7 +140,23 @@ func TestPublishSubscribe(t *testing.T) {
 	tests.TestPubSub(
 		t,
 		features,
-		createPubSub,
-		createPubSubWithConsumerGroup,
+		createMySQLPubSub,
+		createMySQLPubSubWithConsumerGroup,
+	)
+}
+
+func TestPostgreSQLPublishSubscribe(t *testing.T) {
+	features := tests.Features{
+		ConsumerGroups:      true,
+		ExactlyOnceDelivery: true,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		createPostgreSQLPubSub,
+		createPostgreSQLPubSubWithConsumerGroup,
 	)
 }
