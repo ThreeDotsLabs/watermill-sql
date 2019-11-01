@@ -38,7 +38,7 @@ func (c *PublisherConfig) setDefaults() {
 type Publisher struct {
 	config PublisherConfig
 
-	db db
+	db contextExecutor
 
 	publishWg *sync.WaitGroup
 	closeCh   chan struct{}
@@ -48,7 +48,7 @@ type Publisher struct {
 	logger            watermill.LoggerAdapter
 }
 
-func NewPublisher(db db, config PublisherConfig, logger watermill.LoggerAdapter) (*Publisher, error) {
+func NewPublisher(db contextExecutor, config PublisherConfig, logger watermill.LoggerAdapter) (*Publisher, error) {
 	config.setDefaults()
 	if err := config.validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid config")
