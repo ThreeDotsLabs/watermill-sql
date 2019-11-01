@@ -25,15 +25,7 @@ type contextExecutor interface {
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
-// transactor can commit and rollback, on top of being able to execute queries.
-type transactor interface {
-	Commit() error
-	Rollback() error
-
-	executor
-}
-
-// Beginner begins transactions.
+// beginner begins transactions.
 type beginner interface {
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	contextExecutor
