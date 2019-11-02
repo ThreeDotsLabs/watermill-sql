@@ -24,7 +24,7 @@ func TestDefaultMySQLSchema(t *testing.T) {
 	}, logger)
 	require.NoError(t, err)
 
-	subscriber, err := sql.NewSubscriber(db, sql.SubscriberConfig{
+	subscriber, err := sql.NewSelectSubscriber(db, sql.SelectSubscriberConfig{
 		SchemaAdapter:    sql.DefaultMySQLSchema{},
 		OffsetsAdapter:   sql.DefaultMySQLOffsetsAdapter{},
 		InitializeSchema: true,
@@ -45,7 +45,7 @@ func TestDefaultPostgreSQLSchema(t *testing.T) {
 	}, logger)
 	require.NoError(t, err)
 
-	subscriber, err := sql.NewSubscriber(db, sql.SubscriberConfig{
+	subscriber, err := sql.NewSelectSubscriber(db, sql.SelectSubscriberConfig{
 		SchemaAdapter:    sql.DefaultPostgreSQLSchema{},
 		OffsetsAdapter:   sql.DefaultPostgreSQLOffsetsAdapter{},
 		InitializeSchema: true,
