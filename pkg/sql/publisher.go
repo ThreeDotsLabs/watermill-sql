@@ -74,7 +74,9 @@ func NewPublisher(db db, config PublisherConfig, logger watermill.LoggerAdapter)
 	}
 
 	if config.AutoInitializeSchema {
-		pub.warnAutocommit()
+		if err := pub.autocommitWarning(); err != nil {
+			return nil, err
+		}
 	}
 
 	return pub, nil
@@ -159,7 +161,7 @@ func (p *Publisher) Close() error {
 	return nil
 }
 
-func (p *Publisher) warnAutocommit() {
+func (p *Publisher) autocommitWarning() error {
 	_, dbIsTx := p.db.(interface {
 		Commit() error
 		Rollback() error
@@ -170,11 +172,14 @@ func (p *Publisher) warnAutocommit() {
 		p.logger.Info("WARNING: it appears that the publisher's database handle is a transaction and the schema adapter "+
 			"doesn't provide it's own handle. Use a schema adapter that implements the `DB() *sql.DB` method and returns a handle."+
 			"Check the DefaultMySQLSchema adapter implementation for more details.", nil)
+		return errors.New("adapter schema has no separate db handle, danger of implicit commit")
 	}
 
 	if dbIsTx && adapterDB.DB() == nil {
 		p.logger.Info("WARNING: it appears that the publisher's database handle is a transaction and the schema adapter "+
 			"provides the `DB() *sql.DB` method, but no handle is passed. If using the default adapter, check the WithDB option. "+
 			"Check the DefaultMySQLSchema adapter implementation for more details.", nil)
+		return errors.New("adapter schema has no separate db handle, danger of implicit commit")
 	}
+	return nil
 }
