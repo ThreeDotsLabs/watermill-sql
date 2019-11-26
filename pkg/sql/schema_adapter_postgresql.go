@@ -29,10 +29,11 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []strin
 }
 
 func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages) (string, []interface{}, error) {
+
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata) VALUES %s`,
 		s.MessagesTable(topic),
-		strings.TrimRight(strings.Repeat(`($1,$2,$3),`, len(msgs)), ","),
+		defaultInsertMarkers(len(msgs)),
 	)
 
 	args, err := defaultInsertArgs(msgs)
@@ -41,6 +42,18 @@ func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages
 	}
 
 	return insertQuery, args, nil
+}
+
+func defaultInsertMarkers(count int) string {
+	result := strings.Builder{}
+
+	index := 1
+	for i := 0; i < count; i++ {
+		result.WriteString(fmt.Sprintf("($%d,$%d,$%d),", index, index+1, index+2))
+		index += 3
+	}
+
+	return strings.TrimRight(result.String(), ",")
 }
 
 func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
