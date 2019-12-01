@@ -62,7 +62,13 @@ func NewPublisher(db db, config PublisherConfig, logger watermill.LoggerAdapter)
 		logger = watermill.NopLogger{}
 	}
 
-	pub := &Publisher{
+	if config.AutoInitializeSchema && isTx(db) {
+		// either use a prior schema with a tx db handle, or don't use tx with AutoInitializeSchema
+		return nil, errors.New("tried to use AutoInitializeSchema with a database handle that looks like" +
+			"an ongoing transaction; this may result in an implicit commit")
+	}
+
+	return &Publisher{
 		config: config,
 		db:     db,
 
@@ -71,15 +77,7 @@ func NewPublisher(db db, config PublisherConfig, logger watermill.LoggerAdapter)
 		closed:    false,
 
 		logger: logger,
-	}
-
-	if config.AutoInitializeSchema {
-		if err := pub.autocommitWarning(); err != nil {
-			return nil, err
-		}
-	}
-
-	return pub, nil
+	}, nil
 }
 
 // Publish inserts the messages as rows into the MessagesTable.
@@ -161,23 +159,11 @@ func (p *Publisher) Close() error {
 	return nil
 }
 
-func (p *Publisher) autocommitWarning() error {
-	_, dbIsTx := p.db.(interface {
+
+func isTx(db db) bool {
+	_, dbIsTx := db.(interface {
 		Commit() error
 		Rollback() error
 	})
-	adapterDB, adapterWithDB := p.config.SchemaAdapter.(withDBHandle)
-
-	if dbIsTx && !adapterWithDB {
-		return errors.New("it appears that the publisher's database handle is a transaction and the schema adapter " +
-			"doesn't provide it's own handle. Use a schema adapter that implements the `DB() *sql.DB` method and returns a handle." +
-			"Check the DefaultMySQLSchema adapter implementation for more details.")
-	}
-
-	if dbIsTx && adapterDB.DB() == nil {
-		return errors.New("WARNING: it appears that the publisher's database handle is a transaction and the schema adapter " +
-			"provides the `DB() *sql.DB` method, but no handle is passed. If using the default adapter, check the WithDB option. " +
-			"Check the DefaultMySQLSchema adapter implementation for more details.")
-	}
-	return nil
+	return dbIsTx
 }

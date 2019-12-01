@@ -37,12 +37,6 @@ import (
 type DefaultMySQLSchema struct {
 	// GenerateMessagesTableName may be used to override how the messages table name is generated.
 	GenerateMessagesTableName func(topic string) string
-	// WithDB is the database handle that should be used instead of the calling publisher/subscriber's handle.
-	// The publisher or subscriber's handle is used if WithDB is nil.
-	// If your publisher or subscriber is configured to automatically initialize schema AND uses a sql.Tx or equivalent as its handle,
-	// you want to provide a separate handle for the Schema Adapter, because CREATE TABLE requests cause implicit commits:
-	// https://mariadb.com/kb/en/library/sql-statements-that-cause-an-implicit-commit/
-	WithDB *sql.DB
 }
 
 func (s DefaultMySQLSchema) SchemaInitializingQueries(topic string) []string {
@@ -96,8 +90,4 @@ func (s DefaultMySQLSchema) MessagesTable(topic string) string {
 		return s.GenerateMessagesTableName(topic)
 	}
 	return fmt.Sprintf("`watermill_%s`", topic)
-}
-
-func (s DefaultMySQLSchema) DB() *sql.DB {
-	return s.WithDB
 }

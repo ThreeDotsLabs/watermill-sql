@@ -53,24 +53,12 @@ func TestDefaultMySQLSchema_implicit_commit(t *testing.T) {
 	tx, err := db.Begin()
 	require.NoError(t, err)
 
-	schemaAdapter := sql.DefaultMySQLSchema{WithDB: db}
-	publisher, err := sql.NewPublisher(tx, sql.PublisherConfig{
+	schemaAdapter := sql.DefaultMySQLSchema{}
+	_, err = sql.NewPublisher(tx, sql.PublisherConfig{
 		SchemaAdapter:        schemaAdapter,
 		AutoInitializeSchema: true,
 	}, logger)
-	require.NoError(t, err)
-
-	topic := watermill.NewULID()
-	msg := message.NewMessage(watermill.NewUUID(), []byte("{}"))
-
-	require.NoError(t, publisher.Publish(topic, msg))
-
-	var count int64
-	require.NoError(t, tx.Rollback())
-
-	topicTable := schemaAdapter.MessagesTable(topic)
-	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM `+topicTable).Scan(&count))
-	require.EqualValues(t, 0, count, "expected no rows; transaction was rejected")
+	require.Error(t, err, "expecting error with AutoInitializeSchema and db handle which is a tx")
 }
 
 // TestDefaultPostgreSQLSchema checks if the SQL schema defined in DefaultPostgreSQLSchema is correctly executed

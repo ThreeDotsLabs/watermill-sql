@@ -29,7 +29,6 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []strin
 }
 
 func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages) (string, []interface{}, error) {
-
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata) VALUES %s`,
 		s.MessagesTable(topic),

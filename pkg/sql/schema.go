@@ -2,7 +2,6 @@ package sql
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/pkg/errors"
@@ -19,10 +18,6 @@ func initializeSchema(
 	err := validateTopicName(topic)
 	if err != nil {
 		return err
-	}
-
-	if adapterWithDB, ok := schemaAdapter.(withDBHandle); ok && adapterWithDB.DB() != nil {
-		db = adapterWithDB.DB()
 	}
 
 	initializingQueries := schemaAdapter.SchemaInitializingQueries(topic)
@@ -42,8 +37,4 @@ func initializeSchema(
 	}
 
 	return nil
-}
-
-type withDBHandle interface {
-	DB() *sql.DB
 }
