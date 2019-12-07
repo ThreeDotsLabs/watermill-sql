@@ -20,6 +20,8 @@ type PublisherConfig struct {
 
 	// AutoInitializeSchema enables initialization of schema database during publish.
 	// Schema is initialized once per topic per publisher instance.
+	// AutoInitializeSchema is forbidden if using an ongoing transaction as database handle;
+	// That could result in an implicit commit of the transaction by a CREATE TABLE statement.
 	AutoInitializeSchema bool
 }
 
@@ -158,7 +160,6 @@ func (p *Publisher) Close() error {
 
 	return nil
 }
-
 
 func isTx(db db) bool {
 	_, dbIsTx := db.(interface {
