@@ -206,7 +206,10 @@ func (s *Subscriber) query(
 	out chan *message.Message,
 	logger watermill.LoggerAdapter,
 ) (messageUUID string, err error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	txOptions := &sql.TxOptions{
+		Isolation: sql.LevelRepeatableRead,
+	}
+	tx, err := s.db.BeginTx(ctx, txOptions)
 	if err != nil {
 		return "", errors.Wrap(err, "could not begin tx for querying")
 	}
