@@ -34,6 +34,33 @@ func TestDefaultMySQLSchema(t *testing.T) {
 	testOneMessage(t, publisher, subscriber)
 }
 
+func TestDefaultMySQLSchema_implicit_commit_warning(t *testing.T) {
+	db := newMySQL(t)
+	tx, err := db.Begin()
+	require.NoError(t, err)
+
+	schemaAdapter := sql.DefaultMySQLSchema{}
+	_, err = sql.NewPublisher(tx, sql.PublisherConfig{
+		SchemaAdapter:        schemaAdapter,
+		AutoInitializeSchema: true,
+	}, logger)
+	require.Error(t, err, "used auto schema initializing without a separate db handle for the adapter, "+
+		"expected error from publisher constructor")
+}
+
+func TestDefaultMySQLSchema_implicit_commit(t *testing.T) {
+	db := newMySQL(t)
+	tx, err := db.Begin()
+	require.NoError(t, err)
+
+	schemaAdapter := sql.DefaultMySQLSchema{}
+	_, err = sql.NewPublisher(tx, sql.PublisherConfig{
+		SchemaAdapter:        schemaAdapter,
+		AutoInitializeSchema: true,
+	}, logger)
+	require.Error(t, err, "expecting error with AutoInitializeSchema and db handle which is a tx")
+}
+
 // TestDefaultPostgreSQLSchema checks if the SQL schema defined in DefaultPostgreSQLSchema is correctly executed
 // and if message marshaling works as intended.
 func TestDefaultPostgreSQLSchema(t *testing.T) {

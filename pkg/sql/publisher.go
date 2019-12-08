@@ -20,6 +20,8 @@ type PublisherConfig struct {
 
 	// AutoInitializeSchema enables initialization of schema database during publish.
 	// Schema is initialized once per topic per publisher instance.
+	// AutoInitializeSchema is forbidden if using an ongoing transaction as database handle;
+	// That could result in an implicit commit of the transaction by a CREATE TABLE statement.
 	AutoInitializeSchema bool
 }
 
@@ -60,6 +62,12 @@ func NewPublisher(db db, config PublisherConfig, logger watermill.LoggerAdapter)
 
 	if logger == nil {
 		logger = watermill.NopLogger{}
+	}
+
+	if config.AutoInitializeSchema && isTx(db) {
+		// either use a prior schema with a tx db handle, or don't use tx with AutoInitializeSchema
+		return nil, errors.New("tried to use AutoInitializeSchema with a database handle that looks like" +
+			"an ongoing transaction; this may result in an implicit commit")
 	}
 
 	return &Publisher{
@@ -151,4 +159,12 @@ func (p *Publisher) Close() error {
 	p.publishWg.Wait()
 
 	return nil
+}
+
+func isTx(db db) bool {
+	_, dbIsTx := db.(interface {
+		Commit() error
+		Rollback() error
+	})
+	return dbIsTx
 }
