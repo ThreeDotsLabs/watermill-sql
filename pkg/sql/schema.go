@@ -11,7 +11,7 @@ func initializeSchema(
 	ctx context.Context,
 	topic string,
 	logger watermill.LoggerAdapter,
-	db db,
+	db contextExecutor,
 	schemaAdapter SchemaAdapter,
 	offsetsAdapter OffsetsAdapter,
 ) error {

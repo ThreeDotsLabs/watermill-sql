@@ -80,7 +80,7 @@ type Subscriber struct {
 	consumerIdBytes  []byte
 	consumerIdString string
 
-	db     *sql.DB
+	db   beginner
 	config SubscriberConfig
 
 	subscribeWg *sync.WaitGroup
@@ -90,7 +90,7 @@ type Subscriber struct {
 	logger watermill.LoggerAdapter
 }
 
-func NewSubscriber(db *sql.DB, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
+func NewSubscriber(db beginner, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
@@ -268,7 +268,7 @@ func (s *Subscriber) query(
 			"query_args": sqlArgsToLog(consumedArgs),
 		})
 
-		_, err := tx.Exec(consumedQuery, consumedArgs...)
+		_, err := tx.ExecContext(ctx, consumedQuery, consumedArgs...)
 		if err != nil {
 			return msg.UUID, errors.Wrap(err, "cannot send consumed query")
 		}
