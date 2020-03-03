@@ -161,7 +161,7 @@ func (p *Publisher) Close() error {
 	return nil
 }
 
-func isTx(db db) bool {
+func isTx(db contextExecutor) bool {
 	_, dbIsTx := db.(interface {
 		Commit() error
 		Rollback() error
