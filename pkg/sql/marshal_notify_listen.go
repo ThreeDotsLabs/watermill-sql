@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/gob"
 	"fmt"
-	"strconv"
 
 	"github.com/pkg/errors"
 
@@ -23,7 +22,7 @@ type PostgresListenUnmarshaler interface {
 }
 
 type PostgresNotifyMarshaler interface {
-	Marshal(msg *message.Message) (*pq.Notification, error)
+	Marshal(msg *message.Message) (string, error)
 }
 
 // DefaultPostgresListenUnmarshaler unpacks the metadata and payload from a base64-encoded gob in Notification's Extra.
@@ -51,34 +50,22 @@ func (u DefaultPostgresListenUnmarshaler) Unmarshal(notification *pq.Notificatio
 	return msg, nil
 }
 
-// DefaultPostgresNotifyMarshaler packs the metadata and payload into a base64-encoded gob in Notification's Extra.
+// DefaultPostgresNotifyMarshaler packs the metadata and payload into a base64-encoded gob.
 // It's compatible with DefaultPostgresNotifyMarshaler.
 type DefaultPostgresNotifyMarshaler struct{}
 
-func (m DefaultPostgresNotifyMarshaler) Marshal(msg *message.Message) (*pq.Notification, error) {
+func (m DefaultPostgresNotifyMarshaler) Marshal(msg *message.Message) (string, error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 
 	err := enc.Encode(msg)
 	if err != nil {
-		return nil, errors.Wrap(err, "cannot gob encode the message")
+		return "", errors.Wrap(err, "cannot gob encode the message")
 	}
 
 	if buf.Len() > 8*(2<<20) {
-		return nil, errors.New("message size exceeds 8 MB allowed by PostgreSQL")
+		return "", errors.New("message size exceeds 8 MB allowed by PostgreSQL")
 	}
 
-	s := base64.StdEncoding.EncodeToString(buf.Bytes())
-
-	bePID, err := strconv.Atoi(msg.Metadata.Get(metadataPIDKey))
-	if err != nil {
-		bePID = -1
-	}
-
-	return &pq.Notification{
-		BePid:   bePID,
-		Channel: msg.Metadata.Get(metadataChannelKey),
-		Extra:   s,
-	}, nil
-
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
