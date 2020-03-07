@@ -70,19 +70,21 @@ func newMySQL(t *testing.T) *stdSQL.DB {
 }
 
 func newPostgreSQL(t *testing.T) *stdSQL.DB {
-	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
-	if addr == "" {
-		addr = "localhost"
-	}
-
-	connStr := fmt.Sprintf("postgres://watermill:password@%s/watermill?sslmode=disable", addr)
-	db, err := stdSQL.Open("postgres", connStr)
+	db, err := stdSQL.Open("postgres", postgreSQLConnString())
 	require.NoError(t, err)
 
 	err = db.Ping()
 	require.NoError(t, err)
 
 	return db
+}
+
+func postgreSQLConnString() string {
+	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
+	if addr == "" {
+		addr = "localhost"
+	}
+	return fmt.Sprintf("postgres://watermill:password@%s/watermill?sslmode=disable", addr)
 }
 
 func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {

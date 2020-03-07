@@ -2,6 +2,7 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -100,10 +101,26 @@ func (p *NotifyPostgresPublisher) publishMessage(topic string, msg *message.Mess
 		return errors.Wrap(err, "cannot marshal message")
 	}
 
-	_, err = p.db.ExecContext(context.Background(), "NOTIFY ? ?", topic, payload)
+	_, err = p.db.ExecContext(context.Background(), fmt.Sprintf("NOTIFY %s, '%s'", topic, payload))
 	if err != nil {
-		return errors.Wrap(err, "could not insert message as row")
+		return errors.Wrap(err, "could not NOTIFY")
 	}
+
+	return nil
+}
+
+// Close closes the publisher, which means that all the Publish calls called before are finished
+// and no more Publish calls are accepted.
+// Close is blocking until all the ongoing Publish calls have returned.
+func (p *NotifyPostgresPublisher) Close() error {
+	if p.closed {
+		return nil
+	}
+
+	p.closed = true
+
+	close(p.closeCh)
+	p.publishWg.Wait()
 
 	return nil
 }
