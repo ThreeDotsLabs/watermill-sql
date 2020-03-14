@@ -21,15 +21,30 @@ var (
 	logger = watermill.NewStdLogger(true, true)
 )
 
-func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
+func newPubSub(
+	t *testing.T,
+	db *stdSQL.DB,
+	consumerGroup string,
+	schemaAdapter sql.SchemaAdapter,
+	offsetsAdapter sql.OffsetsAdapter,
+	listenNotify bool,
+) (message.Publisher, message.Subscriber) {
 	publisher, err := sql.NewPublisher(
 		db,
 		sql.PublisherConfig{
 			SchemaAdapter: schemaAdapter,
+			PostNotify:    listenNotify,
 		},
 		logger,
 	)
 	require.NoError(t, err)
+
+	var pollMechanism sql.PollMechanism
+	if listenNotify {
+		pollMechanism = sql.PollMechanismListenNotify
+	} else {
+		pollMechanism = sql.PollMechanismSelect
+	}
 
 	subscriber, err := sql.NewSubscriber(
 		db,
@@ -40,6 +55,8 @@ func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter 
 			ResendInterval: 50 * time.Millisecond,
 			SchemaAdapter:  schemaAdapter,
 			OffsetsAdapter: offsetsAdapter,
+
+			PollMechanism: pollMechanism,
 		},
 		logger,
 	)
@@ -100,7 +117,7 @@ func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (mes
 		},
 	}
 
-	return newPubSub(t, newMySQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
+	return newPubSub(t, newMySQL(t), consumerGroup, schemaAdapter, offsetsAdapter, false)
 }
 
 func createMySQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
@@ -122,7 +139,7 @@ func createPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string)
 		},
 	}
 
-	return newPubSub(t, newPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
+	return newPubSub(t, newPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter, false)
 }
 
 func createPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {

@@ -10,7 +10,7 @@ type OffsetsAdapter interface {
 	// ConsumedMessageQuery is optional, and will be not executed if query is empty.
 	ConsumedMessageQuery(topic string, offset int, consumerGroup string, consumerULID []byte) (string, []interface{})
 
-	// NextOffsetQuery returns the SQL query and arguments which should return offset of next message to consume.
+	// NextOffsetQuery returns the SQL query and arguments which should return offset of next message to consumeSelect.
 	NextOffsetQuery(topic, consumerGroup string) (string, []interface{})
 
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)

@@ -17,11 +17,27 @@ var (
 	ErrSubscriberClosed = errors.New("subscriber is closed")
 )
 
+type PollMechanism struct {
+	s string
+}
+
+var (
+	// PollMechanismSelect makes the subscriber poll in set intervals of SubscriberConfig.PollInterval for new messages
+	// via a SELECT query.
+	PollMechanismSelect = PollMechanism{"SELECT"}
+	// PollMechanismListenNotify makes the subscriber poll for messages whenever a NOTIFY signal is received via LISTEN
+	// on the corresponding channel. Works only with PostgreSQL.
+	PollMechanismListenNotify = PollMechanism{"LISTEN/NOTIFY"}
+)
+
 type SubscriberConfig struct {
 	ConsumerGroup string
 
+	// PollMechanism sets how the subscriber listens for new messages. Defaults to PollMechanismSelect.
+	PollMechanism PollMechanism
+
 	// PollInterval is the interval to wait between subsequent SELECT queries, if no more messages were found in the database.
-	// Must be non-negative. Defaults to 1s.
+	// Must be non-negative if PollMechanism includes PollMechanismSelect. Defaults to 1s.
 	PollInterval time.Duration
 
 	// ResendInterval is the time to wait before resending a nacked message.
@@ -43,6 +59,9 @@ type SubscriberConfig struct {
 }
 
 func (c *SubscriberConfig) setDefaults() {
+	if c.PollMechanism == (PollMechanism{}) {
+		c.PollMechanism = PollMechanismSelect
+	}
 	if c.PollInterval == 0 {
 		c.PollInterval = time.Second
 	}
@@ -55,6 +74,9 @@ func (c *SubscriberConfig) setDefaults() {
 }
 
 func (c SubscriberConfig) validate() error {
+	if c.PollMechanism != PollMechanismListenNotify && c.PollMechanism != PollMechanismSelect {
+		return errors.New("invalid poll mechanism: " + c.PollMechanism.s)
+	}
 	if c.PollInterval <= 0 {
 		return errors.New("poll interval must be a positive duration")
 	}
@@ -80,7 +102,7 @@ type Subscriber struct {
 	consumerIdBytes  []byte
 	consumerIdString string
 
-	db   beginner
+	db     beginner
 	config SubscriberConfig
 
 	subscribeWg *sync.WaitGroup
@@ -173,6 +195,19 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 		"consumer_group": s.config.ConsumerGroup,
 	})
 
+	var err error
+	var wait waitForNextQueryFn
+
+	if s.config.PollMechanism == PollMechanismSelect {
+		wait = s.waitForTime
+	} else {
+		wait, err = s.waitForListen(topic)
+		if err != nil {
+			logger.Error("error setting up waiting function", err, nil)
+			return
+		}
+	}
+
 	for {
 		select {
 		case <-s.closing:
@@ -180,7 +215,7 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 			return
 
 		case <-ctx.Done():
-			logger.Info("Stopping consume, context canceled", nil)
+			logger.Info("Stopping consumeSelect, context canceled", nil)
 			return
 
 		default:
@@ -188,6 +223,16 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 		}
 
 		messageUUID, err := s.query(ctx, topic, out, logger)
+
+		if errors.Cause(err) == sql.ErrNoRows {
+			// wait until polling for the next message
+			logger.Debug("No more messages, waiting until next query", watermill.LogFields{
+				"wait_time": s.config.PollInterval,
+			})
+			wait(ctx, topic)
+			continue
+		}
+
 		if err != nil && isDeadlock(err) {
 			logger.Debug("Deadlock during querying message, trying again", watermill.LogFields{
 				"err":          err.Error(),
@@ -240,14 +285,7 @@ func (s *Subscriber) query(
 	row := tx.QueryRowContext(ctx, selectQuery, selectQueryArgs...)
 
 	offset, msg, err := s.config.SchemaAdapter.UnmarshalMessage(row)
-	if errors.Cause(err) == sql.ErrNoRows {
-		// wait until polling for the next message
-		logger.Debug("No more messages, waiting until next query", watermill.LogFields{
-			"wait_time": s.config.PollInterval,
-		})
-		time.Sleep(s.config.PollInterval)
-		return "", nil
-	} else if err != nil {
+	if err != nil {
 		return "", errors.Wrap(err, "could not unmarshal message from query")
 	}
 
@@ -311,7 +349,6 @@ func (s *Subscriber) sendMessage(
 
 ResendLoop:
 	for {
-
 		select {
 		case out <- msg:
 

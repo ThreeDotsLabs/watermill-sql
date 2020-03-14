@@ -17,7 +17,7 @@ func TestValidateTopicName(t *testing.T) {
 	schemaAdapter := sql.DefaultMySQLSchema{}
 	offsetsAdapter := sql.DefaultMySQLOffsetsAdapter{}
 
-	publisher, subscriber := newPubSub(t, newMySQL(t), "", schemaAdapter, offsetsAdapter)
+	publisher, subscriber := newPubSub(t, newMySQL(t), "", schemaAdapter, offsetsAdapter, false)
 	cleverlyNamedTopic := "some_topic; DROP DATABASE `watermill`"
 
 	err := publisher.Publish(cleverlyNamedTopic, message.NewMessage("uuid", nil))

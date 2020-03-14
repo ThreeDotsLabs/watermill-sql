@@ -2,6 +2,7 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -23,6 +24,10 @@ type PublisherConfig struct {
 	// AutoInitializeSchema is forbidden if using an ongoing transaction as database handle;
 	// That could result in an implicit commit of the transaction by a CREATE TABLE statement.
 	AutoInitializeSchema bool
+
+	// PostNotify, if enabled, posts a NOTIFY notification for the LISTEN subscribers.
+	// Works only with PostgreSQL.
+	PostNotify bool
 }
 
 func (c PublisherConfig) validate() error {
@@ -113,9 +118,22 @@ func (p *Publisher) Publish(topic string, messages ...*message.Message) (err err
 		"query_args": sqlArgsToLog(insertArgs),
 	})
 
-	_, err = p.db.ExecContext(context.Background(), insertQuery, insertArgs...)
+	ctx := context.Background()
+	_, err = p.db.ExecContext(ctx, insertQuery, insertArgs...)
 	if err != nil {
 		return errors.Wrap(err, "could not insert message as row")
+	}
+
+	if p.config.PostNotify {
+		notifyQuery := fmt.Sprintf(`NOTIFY "%s"`, topic)
+		p.logger.Trace("Posting NOTIFY", watermill.LogFields{
+			"query": notifyQuery,
+		})
+
+		_, err = p.db.ExecContext(ctx, notifyQuery)
+		if err != nil {
+			return errors.Wrap(err, "could not post notification via NOTIFY")
+		}
 	}
 
 	return nil

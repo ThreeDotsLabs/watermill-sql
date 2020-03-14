@@ -11,8 +11,8 @@ import (
 //
 // We are using FOR UPDATE in NextOffsetQuery to lock consumer group in offsets table.
 //
-// When another consumer is trying to consume the same message, deadlock should occur in ConsumedMessageQuery.
-// After deadlock, consumer will consume next message.
+// When another consumer is trying to consumeSelect the same message, deadlock should occur in ConsumedMessageQuery.
+// After deadlock, consumer will consumeSelect next message.
 type DefaultMySQLOffsetsAdapter struct {
 	// GenerateMessagesOffsetsTableName may be used to override how the messages/offsets table name is generated.
 	GenerateMessagesOffsetsTableName func(topic string) string
