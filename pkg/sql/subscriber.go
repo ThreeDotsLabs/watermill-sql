@@ -80,7 +80,7 @@ type Subscriber struct {
 	consumerIdBytes  []byte
 	consumerIdString string
 
-	db   beginner
+	db     beginner
 	config SubscriberConfig
 
 	subscribeWg *sync.WaitGroup
@@ -222,7 +222,7 @@ func (s *Subscriber) query(
 			}
 		} else {
 			commitErr := tx.Commit()
-			if commitErr != nil {
+			if commitErr != nil && commitErr != sql.ErrTxDone {
 				logger.Error("could not commit tx for querying message", commitErr, nil)
 			}
 		}
@@ -245,6 +245,7 @@ func (s *Subscriber) query(
 		logger.Debug("No more messages, waiting until next query", watermill.LogFields{
 			"wait_time": s.config.PollInterval,
 		})
+		tx.Rollback()
 		time.Sleep(s.config.PollInterval)
 		return "", nil
 	} else if err != nil {
