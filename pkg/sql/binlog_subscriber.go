@@ -346,8 +346,8 @@ func (s *BinlogSubscriber) process(
 	}()
 
 	var nextOffset int64
-	nextOffsetQuery, _ := s.config.OffsetsAdapter.NextOffsetQuery(topic, s.config.ConsumerGroup)
-	nextOffsetRow := tx.QueryRow(nextOffsetQuery, s.config.ConsumerGroup)
+	nextOffsetQuery, nextOffsetQueryArgs := s.config.OffsetsAdapter.NextOffsetQuery(topic, s.config.ConsumerGroup)
+	nextOffsetRow := tx.QueryRow(nextOffsetQuery, nextOffsetQueryArgs...)
 	err = nextOffsetRow.Scan(&nextOffset)
 	if err != nil {
 		return errors.Wrap(err, "cannot get next offset")

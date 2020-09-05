@@ -33,18 +33,15 @@ func newBinlogSync(
 	}
 }
 
-func (b binlogSync) OnRotate(e *replication.RotateEvent) error {
-	// Not supported
+func (b binlogSync) OnRotate(_ *replication.RotateEvent) error {
 	return nil
 }
 
 func (b binlogSync) OnTableChanged(_ string, _ string) error {
-	// Not supported
 	return nil
 }
 
 func (b binlogSync) OnDDL(_ mysql.Position, _ *replication.QueryEvent) error {
-	// Not supported
 	return nil
 }
 
@@ -74,12 +71,10 @@ func (b binlogSync) OnRow(e *canal.RowsEvent) error {
 }
 
 func (b binlogSync) OnXID(_ mysql.Position) error {
-	// Not supported
 	return nil
 }
 
 func (b binlogSync) OnGTID(_ mysql.GTIDSet) error {
-	// Not supported
 	return nil
 }
 

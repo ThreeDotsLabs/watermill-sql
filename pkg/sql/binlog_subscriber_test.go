@@ -14,7 +14,7 @@ import (
 const (
 	firstConsumerGroupName  = "first_consumer_group"
 	secondConsumerGroupName = "second_consumer_group"
-	waitTime                = time.Second * 1000
+	waitTime                = time.Second
 )
 
 var (
