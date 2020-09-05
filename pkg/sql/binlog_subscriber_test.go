@@ -7,14 +7,13 @@ import (
 	"github.com/ThreeDotsLabs/watermill-sql/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/stretchr/testify/require"
+	"sync"
 	"testing"
 	"time"
 )
 
 const (
-	firstConsumerGroupName  = "first_consumer_group"
-	secondConsumerGroupName = "second_consumer_group"
-	waitTime                = time.Second
+	waitTime = time.Second
 )
 
 var (
@@ -30,6 +29,9 @@ var (
 
 func TestBinlogSubscriber(t *testing.T) {
 	db := newMySQL(t)
+	firstConsumerGroupName := "first_consumer_group_" + watermill.NewULID()
+	secondConsumerGroupName := "second_consumer_group_" + watermill.NewULID()
+
 	topic := "test_" + watermill.NewULID()
 
 	publisher, err := sql.NewPublisher(db, sql.PublisherConfig{
@@ -111,6 +113,62 @@ func TestBinlogSubscriber(t *testing.T) {
 		err = subscriber.Close()
 		require.NoError(t, err)
 	})
+}
+
+func TestBinlogSubscriber_multiple_subscribers(t *testing.T) {
+	db := newMySQL(t)
+	consumerGroup := "consumer_group_" + watermill.NewULID()
+	publisher, err := sql.NewPublisher(db, sql.PublisherConfig{
+		SchemaAdapter:        sql.DefaultMySQLSchema{},
+		AutoInitializeSchema: true,
+	}, logger)
+	require.NoError(t, err)
+
+	topics := map[string][]*message.Message{
+		"first_" + watermill.NewULID():  getTestMessages(7),
+		"second_" + watermill.NewULID(): getTestMessages(11),
+		"third_" + watermill.NewULID():  getTestMessages(13),
+	}
+
+	var wg sync.WaitGroup
+
+	for topic, messages := range topics {
+		wg.Add(1)
+		go func(topic string, messages []*message.Message) {
+			err = publisher.Publish(topic, messages...)
+			require.NoError(t, err)
+
+			wg.Done()
+		}(topic, messages)
+	}
+
+	wg.Wait()
+
+	subscriber, err := sql.NewBinlogSubscriber(db, sql.BinlogSubscriberConfig{
+		ConsumerGroup:    consumerGroup,
+		SchemaAdapter:    sql.DefaultMySQLSchema{},
+		OffsetsAdapter:   sql.DefaultMySQLBinlogOffsetsAdapter{},
+		InitializeSchema: true,
+		Database:         dbConfig,
+	}, logger)
+	require.NoError(t, err)
+
+	for topic, expectedMessages := range topics {
+		wg.Add(1)
+		messageStream, err := subscriber.Subscribe(context.Background(), topic)
+		require.NoError(t, err)
+		go func(messages []*message.Message) {
+			actualMessages := waitForMessages(t, len(messages), messageStream)
+
+			assertMessages(t, messages, actualMessages)
+			wg.Done()
+		}(expectedMessages)
+	}
+
+	wg.Wait()
+
+	err = subscriber.Close()
+	require.NoError(t, err)
 }
 
 func waitForMessages(t *testing.T, expectedNumberOfMessages int, messages <-chan *message.Message) []*message.Message {
