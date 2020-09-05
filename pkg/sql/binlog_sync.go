@@ -2,6 +2,7 @@ package sql
 
 import (
 	"fmt"
+	"github.com/ThreeDotsLabs/watermill"
 	"github.com/pkg/errors"
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/mysql"
@@ -13,8 +14,11 @@ import (
 const mysqlDateFormat = "2006-01-02"
 
 type binlogSync struct {
-	table      *schema.Table
-	mapping    columnsIndexesMapping
+	table   *schema.Table
+	mapping columnsIndexesMapping
+	logger  watermill.LoggerAdapter
+	// this gonna work because it will be either written or read
+	position   mysql.Position
 	rowsStream chan Row
 }
 
@@ -25,10 +29,12 @@ func (b binlogSync) RowsStream() <-chan Row {
 func newBinlogSync(
 	table *schema.Table,
 	mapping columnsIndexesMapping,
+	logger watermill.LoggerAdapter,
 ) *binlogSync {
 	return &binlogSync{
 		table:      table,
 		mapping:    mapping,
+		logger:     logger,
 		rowsStream: make(chan Row),
 	}
 }
@@ -78,8 +84,8 @@ func (b binlogSync) OnGTID(_ mysql.GTIDSet) error {
 	return nil
 }
 
-func (b binlogSync) OnPosSynced(_ mysql.Position, _ mysql.GTIDSet, _ bool) error {
-	// Not supported
+func (b *binlogSync) OnPosSynced(position mysql.Position, _ mysql.GTIDSet, _ bool) error {
+	b.position = position
 	return nil
 }
 
@@ -114,7 +120,7 @@ func (b binlogSync) mapRow(table *schema.Table, r []interface{}) Row {
 		fmt.Println(err)
 	}
 
-	return newRow(offset, uuid, metadata, payload)
+	return newRow(offset, uuid, metadata, payload, b.position)
 }
 
 func getNumberValue(column *schema.TableColumn, value interface{}) (int64, error) {

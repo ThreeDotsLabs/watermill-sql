@@ -47,7 +47,7 @@ func TestBinlogSubscriber(t *testing.T) {
 		firstSubscriber, err := sql.NewBinlogSubscriber(db, sql.BinlogSubscriberConfig{
 			ConsumerGroup:    firstConsumerGroupName,
 			SchemaAdapter:    sql.DefaultMySQLSchema{},
-			OffsetsAdapter:   sql.DefaultMySQLOffsetsAdapter{},
+			OffsetsAdapter:   sql.DefaultMySQLBinlogOffsetsAdapter{},
 			InitializeSchema: true,
 			Database:         dbConfig,
 		}, logger)
@@ -73,7 +73,7 @@ func TestBinlogSubscriber(t *testing.T) {
 		subscriber, err := sql.NewBinlogSubscriber(db, sql.BinlogSubscriberConfig{
 			ConsumerGroup:    firstConsumerGroupName,
 			SchemaAdapter:    sql.DefaultMySQLSchema{},
-			OffsetsAdapter:   sql.DefaultMySQLOffsetsAdapter{},
+			OffsetsAdapter:   sql.DefaultMySQLBinlogOffsetsAdapter{},
 			InitializeSchema: false,
 			Database:         dbConfig,
 		}, logger)
@@ -94,7 +94,7 @@ func TestBinlogSubscriber(t *testing.T) {
 		subscriber, err := sql.NewBinlogSubscriber(db, sql.BinlogSubscriberConfig{
 			ConsumerGroup:    secondConsumerGroupName,
 			SchemaAdapter:    sql.DefaultMySQLSchema{},
-			OffsetsAdapter:   sql.DefaultMySQLOffsetsAdapter{},
+			OffsetsAdapter:   sql.DefaultMySQLBinlogOffsetsAdapter{},
 			InitializeSchema: false,
 			Database:         dbConfig,
 		}, logger)
@@ -144,6 +144,8 @@ func getTestMessages(n int) []*message.Message {
 }
 
 func assertMessages(t *testing.T, expected []*message.Message, actual []*message.Message) {
+	require.Equal(t, len(expected), len(actual), "messages count needs to be the same")
+
 	for i, expectedMsg := range expected {
 		require.Equal(t, string(expectedMsg.Payload), string(actual[i].Payload))
 		require.True(t, expectedMsg.Equals(actual[i]))

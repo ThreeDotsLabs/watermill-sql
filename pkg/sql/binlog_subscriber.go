@@ -49,7 +49,7 @@ type BinlogSubscriberConfig struct {
 	SchemaAdapter ExtendedSchemaAdapter
 
 	// OffsetsAdapter provides mechanism for saving acks and offsets of consumers.
-	OffsetsAdapter OffsetsAdapter
+	OffsetsAdapter BinlogOffsetAdapter
 
 	// InitializeSchema option enables initializing schema on making subscription.
 	InitializeSchema bool
@@ -240,6 +240,7 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 	})
 
 	tableName := s.config.SchemaAdapter.MessagesTable(topic)
+	// TODO: fix regular subscriber to avoid that
 	trimmedTableName := strings.Trim(tableName, "`")
 
 	subscriptionCanal, err := s.getCanal(trimmedTableName)
@@ -265,6 +266,7 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 			metadata: table.FindColumn(s.config.ColumnsMapping.Metadata),
 			payload:  table.FindColumn(s.config.ColumnsMapping.Payload),
 		},
+		s.logger,
 	)
 
 	subscriptionCanal.SetEventHandler(sync)
@@ -281,8 +283,7 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 		}
 	}()
 
-	// TODO: checkout if there might be a translation position - offset
-	position, err := getZeroPosition(subscriptionCanal)
+	position, err := s.resolveStartingPosition(topic, subscriptionCanal)
 	if err != nil {
 		logger.Error("Error getting zero position", err, nil)
 		return
@@ -299,11 +300,6 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 	for {
 		select {
 		case row := <-sync.RowsStream():
-			// check offset
-			// if offset incorrect skip
-			// if offset ok
-			//
-			//row.Offset()
 			err = s.process(ctx, row, topic, out, logger)
 			if err != nil {
 				logger.Error("Error processing row", err, nil)
@@ -361,7 +357,8 @@ func (s *BinlogSubscriber) process(
 		topic,
 		int(r.offset),
 		s.config.ConsumerGroup,
-		s.consumerIdBytes,
+		r.position.Name,
+		r.position.Pos,
 	)
 	if consumedQuery != "" {
 		logger.Trace("Executing query to confirm message consumed", watermill.LogFields{
@@ -487,14 +484,28 @@ func getRandUint32() (uint32, error) {
 }
 
 func (s *BinlogSubscriber) SubscribeInitialize(topic string) error {
-	return initializeSchema(
-		context.Background(),
-		topic,
-		s.logger,
-		s.db,
-		s.config.SchemaAdapter,
-		s.config.OffsetsAdapter,
-	)
+	err := validateTopicName(topic)
+	if err != nil {
+		return err
+	}
+
+	initializingQueries := s.config.SchemaAdapter.SchemaInitializingQueries(topic)
+	if s.config.OffsetsAdapter != nil {
+		initializingQueries = append(initializingQueries, s.config.OffsetsAdapter.SchemaInitializingQueries(topic)...)
+	}
+
+	s.logger.Info("Initializing subscriber schema", watermill.LogFields{
+		"query": initializingQueries,
+	})
+
+	for _, q := range initializingQueries {
+		_, err := s.db.ExecContext(context.TODO(), q)
+		if err != nil {
+			return errors.Wrap(err, "cound not initialize schema")
+		}
+	}
+
+	return nil
 }
 
 type ExtendedSchemaAdapter interface {
@@ -502,10 +513,39 @@ type ExtendedSchemaAdapter interface {
 	MessagesTable(topic string) string
 }
 
-func getZeroPosition(c *canal.Canal) (mysql.Position, error) {
+func (s *BinlogSubscriber) resolveStartingPosition(topic string, c *canal.Canal) (mysql.Position, error) {
 	rr, err := c.Execute("SHOW BINARY LOGS")
 	if err != nil {
 		return mysql.Position{}, err
+	}
+	positionQuery, positionQueryArgs := s.config.OffsetsAdapter.PositionQuery(topic, s.config.ConsumerGroup)
+	row := s.db.QueryRow(positionQuery, positionQueryArgs...)
+	var logName string
+	var logPosition uint32
+	err = row.Scan(&logName, &logPosition)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			name, err := rr.GetString(0, 0)
+			if err != nil {
+				return mysql.Position{}, err
+			}
+			return mysql.Position{Name: name, Pos: uint32(0)}, nil
+		}
+		return mysql.Position{}, err
+	}
+
+	for i := 0; i < rr.RowNumber(); i++ {
+		logNameInDb, err := rr.GetString(i, 0)
+		if err != nil {
+			return mysql.Position{}, err
+		}
+
+		if logName == logNameInDb {
+			return mysql.Position{
+				Name: logName,
+				Pos:  logPosition,
+			}, nil
+		}
 	}
 
 	name, err := rr.GetString(0, 0)
@@ -527,10 +567,15 @@ type Row struct {
 	uuid     []byte
 	metadata []byte
 	payload  []byte
+	position mysql.Position
 }
 
-func newRow(offset int64, uuid []byte, metadata []byte, payload []byte) Row {
-	return Row{offset: offset, uuid: uuid, metadata: metadata, payload: payload}
+func newRow(offset int64, uuid []byte, metadata []byte, payload []byte, position mysql.Position) Row {
+	return Row{offset: offset, uuid: uuid, metadata: metadata, payload: payload, position: position}
+}
+
+func (r Row) Position() mysql.Position {
+	return r.position
 }
 
 func (r Row) Payload() []byte {
