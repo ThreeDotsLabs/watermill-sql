@@ -42,8 +42,10 @@ func TestBinlogSubscriber(t *testing.T) {
 
 	// publish first batch the messages
 	firstMessagesBatch := getTestMessages(11)
-	err = publisher.Publish(topic, firstMessagesBatch...)
-	require.NoError(t, err)
+	for _, msg := range firstMessagesBatch {
+		err = publisher.Publish(topic, msg)
+		require.NoError(t, err)
+	}
 
 	t.Run("first consumer group should receive first batch of the messages", func(t *testing.T) {
 		firstSubscriber, err := sql.NewBinlogSubscriber(db, sql.BinlogSubscriberConfig{
@@ -55,15 +57,17 @@ func TestBinlogSubscriber(t *testing.T) {
 		}, logger)
 		require.NoError(t, err)
 
-		messagesStream, err := firstSubscriber.Subscribe(context.Background(), topic)
+		messageStream, err := firstSubscriber.Subscribe(context.Background(), topic)
 		require.NoError(t, err)
 
-		actualMessages := waitForMessages(t, len(firstMessagesBatch), messagesStream)
+		actualMessages := waitForMessages(t, len(firstMessagesBatch), messageStream)
 
 		assertMessages(t, firstMessagesBatch, actualMessages)
 
 		err = firstSubscriber.Close()
 		require.NoError(t, err)
+
+		assertMessageChannelClosed(t, messageStream)
 	})
 
 	// publish second batch the messages
@@ -81,15 +85,17 @@ func TestBinlogSubscriber(t *testing.T) {
 		}, logger)
 		require.NoError(t, err)
 
-		messagesStream, err := subscriber.Subscribe(context.Background(), topic)
+		messageStream, err := subscriber.Subscribe(context.Background(), topic)
 		require.NoError(t, err)
 
-		actualMessages := waitForMessages(t, len(secondMessagesBatch), messagesStream)
+		actualMessages := waitForMessages(t, len(secondMessagesBatch), messageStream)
 
 		assertMessages(t, secondMessagesBatch, actualMessages)
 
 		err = subscriber.Close()
 		require.NoError(t, err)
+
+		assertMessageChannelClosed(t, messageStream)
 	})
 
 	t.Run("second consumer group should receive all messages from both batches and in order", func(t *testing.T) {
@@ -102,16 +108,18 @@ func TestBinlogSubscriber(t *testing.T) {
 		}, logger)
 		require.NoError(t, err)
 
-		messagesStream, err := subscriber.Subscribe(context.Background(), topic)
+		messageStream, err := subscriber.Subscribe(context.Background(), topic)
 		require.NoError(t, err)
 
 		expectedMessages := append(firstMessagesBatch, secondMessagesBatch...)
-		actualMessages := waitForMessages(t, len(expectedMessages), messagesStream)
+		actualMessages := waitForMessages(t, len(expectedMessages), messageStream)
 
 		assertMessages(t, expectedMessages, actualMessages)
 
 		err = subscriber.Close()
 		require.NoError(t, err)
+
+		assertMessageChannelClosed(t, messageStream)
 	})
 }
 
@@ -208,4 +216,9 @@ func assertMessages(t *testing.T, expected []*message.Message, actual []*message
 		require.Equal(t, string(expectedMsg.Payload), string(actual[i].Payload))
 		require.True(t, expectedMsg.Equals(actual[i]))
 	}
+}
+
+func assertMessageChannelClosed(t *testing.T, msgStream <-chan *message.Message) {
+	_, isOpen := <-msgStream
+	require.False(t, isOpen, "chanel should be closed")
 }

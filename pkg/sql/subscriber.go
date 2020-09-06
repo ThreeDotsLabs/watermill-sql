@@ -80,7 +80,7 @@ type Subscriber struct {
 	consumerIdBytes  []byte
 	consumerIdString string
 
-	db   beginner
+	db     beginner
 	config SubscriberConfig
 
 	subscribeWg *sync.WaitGroup

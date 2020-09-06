@@ -11,47 +11,44 @@ import (
 	"strings"
 )
 
-const mysqlDateFormat = "2006-01-02"
-
-type binlogSync struct {
-	table   *schema.Table
-	mapping columnsIndexesMapping
-	logger  watermill.LoggerAdapter
-	// this gonna work because it will be either written or read
+type mysqlBinlogSync struct {
+	table      *schema.Table
+	mapping    columnsIndexesMapping
+	logger     watermill.LoggerAdapter
 	position   mysql.Position
 	rowsStream chan Row
-}
-
-func (b binlogSync) RowsStream() <-chan Row {
-	return b.rowsStream
 }
 
 func newBinlogSync(
 	table *schema.Table,
 	mapping columnsIndexesMapping,
 	logger watermill.LoggerAdapter,
-) *binlogSync {
-	return &binlogSync{
+) *mysqlBinlogSync {
+	return &mysqlBinlogSync{
 		table:      table,
 		mapping:    mapping,
-		logger:     logger,
+		logger:     logger.With(watermill.LogFields{"table_to_sync": table.Name}),
 		rowsStream: make(chan Row),
 	}
 }
 
-func (b binlogSync) OnRotate(_ *replication.RotateEvent) error {
+func (b mysqlBinlogSync) RowsStream() <-chan Row {
+	return b.rowsStream
+}
+
+func (b mysqlBinlogSync) OnRotate(_ *replication.RotateEvent) error {
 	return nil
 }
 
-func (b binlogSync) OnTableChanged(_ string, _ string) error {
+func (b mysqlBinlogSync) OnTableChanged(_ string, _ string) error {
 	return nil
 }
 
-func (b binlogSync) OnDDL(_ mysql.Position, _ *replication.QueryEvent) error {
+func (b mysqlBinlogSync) OnDDL(_ mysql.Position, _ *replication.QueryEvent) error {
 	return nil
 }
 
-func (b binlogSync) OnRow(e *canal.RowsEvent) error {
+func (b mysqlBinlogSync) OnRow(e *canal.RowsEvent) error {
 	var firstValueIndex = 0
 	var stepLength = 1
 
@@ -67,63 +64,63 @@ func (b binlogSync) OnRow(e *canal.RowsEvent) error {
 	switch e.Action {
 	case canal.InsertAction:
 		for i := firstValueIndex; i < len(e.Rows); i += stepLength {
-			b.rowsStream <- b.mapRow(e.Table, e.Rows[i])
+			row, err := b.mapRow(e.Table, e.Rows[i])
+			if err != nil {
+				return err
+			}
+			b.rowsStream <- row
 		}
 	case canal.UpdateAction, canal.DeleteAction:
 	default:
-		fmt.Printf("Unknown action")
+		b.logger.Info("Unknown action", nil)
 	}
 	return nil
 }
 
-func (b binlogSync) OnXID(_ mysql.Position) error {
+func (b mysqlBinlogSync) OnXID(_ mysql.Position) error {
 	return nil
 }
 
-func (b binlogSync) OnGTID(_ mysql.GTIDSet) error {
+func (b mysqlBinlogSync) OnGTID(_ mysql.GTIDSet) error {
 	return nil
 }
 
-func (b *binlogSync) OnPosSynced(position mysql.Position, _ mysql.GTIDSet, _ bool) error {
+func (b *mysqlBinlogSync) OnPosSynced(position mysql.Position, _ mysql.GTIDSet, _ bool) error {
 	b.position = position
 	return nil
 }
 
-func (b binlogSync) String() string {
-	return "binlogSync"
+func (b mysqlBinlogSync) String() string {
+	return "mysqlBinlogSync_" + b.table.Name
 }
 
-func (b binlogSync) mapRow(table *schema.Table, r []interface{}) Row {
+func (b mysqlBinlogSync) mapRow(table *schema.Table, r []interface{}) (Row, error) {
 	mapping := b.mapping
 
 	payload, err := getBytes(&table.Columns[mapping.payload], r[mapping.payload])
 	if err != nil {
-		// TODO: fix me
-		fmt.Println(err)
+		return Row{}, errors.Wrap(err, "could not get bytes for payload")
 	}
 
 	uuid, err := getBytes(&table.Columns[mapping.uuid], r[mapping.uuid])
 	if err != nil {
-		// TODO: fix me
-		fmt.Println(err)
+		return Row{}, errors.Wrap(err, "could not get bytes for uuid")
 	}
 
 	metadata, err := getBytes(&table.Columns[mapping.metadata], r[mapping.metadata])
 	if err != nil {
-		// TODO: fix me
-		fmt.Println(err)
+		return Row{}, errors.Wrap(err, "could not get bytes for metadata")
 	}
 
-	offset, err := getNumberValue(&table.Columns[mapping.offset], r[mapping.offset])
+	offset, err := getNumber(&table.Columns[mapping.offset], r[mapping.offset])
 	if err != nil {
-		// TODO: fix me
-		fmt.Println(err)
+		return Row{}, errors.Wrap(err, "could not get number for offset")
 	}
 
-	return newRow(offset, uuid, metadata, payload, b.position)
+	return newRow(offset, uuid, metadata, payload, b.position), nil
 }
 
-func getNumberValue(column *schema.TableColumn, value interface{}) (int64, error) {
+func getNumber(column *schema.TableColumn, value interface{}) (int64, error) {
 	if column.Type != schema.TYPE_NUMBER {
 		return 0, errors.New("column is not of type number")
 	}
@@ -207,21 +204,3 @@ func getBytes(column *schema.TableColumn, value interface{}) ([]byte, error) {
 
 	return []byte{}, fmt.Errorf("could not resolve value for column of type %d", column.Type)
 }
-
-/*
-TYPE_NUMBER    = iota + 1 // tinyint, smallint, int, bigint, year
-	TYPE_FLOAT                // float, double
-	TYPE_ENUM                 // enum
-	TYPE_SET                  // set
-	TYPE_STRING               // char, varchar, etc.
-	TYPE_DATETIME             // datetime
-	TYPE_TIMESTAMP            // timestamp
-	TYPE_DATE                 // date
-	TYPE_TIME                 // time
-	TYPE_BIT                  // bit
-	TYPE_JSON                 // json
-	TYPE_DECIMAL              // decimal
-	TYPE_MEDIUM_INT
-	TYPE_BINARY               // binary, varbinary
-	TYPE_POINT                // coordinates
-*/

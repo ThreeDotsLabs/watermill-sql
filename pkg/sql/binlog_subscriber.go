@@ -6,15 +6,17 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/pkg/errors"
-	"github.com/siddontang/go-mysql/canal"
-	"github.com/siddontang/go-mysql/mysql"
 	"math/rand"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/siddontang/go-mysql/canal"
+	"github.com/siddontang/go-mysql/mysql"
+
+	"github.com/ThreeDotsLabs/watermill"
+	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 var (
@@ -149,12 +151,12 @@ func NewBinlogSubscriber(db beginner, config BinlogSubscriberConfig, logger wate
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
-	// TODO: check if below requirements have to be strict or they can be relaxed to a warning
+
 	if err := checkVariable(db, "binlog_format", "ROW"); err != nil {
-		return nil, errors.Wrap(err, "invalid database configuration")
+		return nil, errors.Wrap(err, "invalid database configuration, `binlog_format` need to be set to `ROW`")
 	}
 	if err := checkVariable(db, "binlog_row_image", "FULL"); err != nil {
-		return nil, errors.Wrap(err, "invalid database configuration")
+		return nil, errors.Wrap(err, "invalid database configuration, `binlog_row_image` need to be set to `FULL`")
 	}
 
 	config.setDefaults()
@@ -240,36 +242,40 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 	})
 
 	tableName := s.config.SchemaAdapter.MessagesTable(topic)
-	// TODO: fix regular subscriber to avoid that
+	// TODO: fix schema adapter to avoid that
 	trimmedTableName := strings.Trim(tableName, "`")
 
 	subscriptionCanal, err := s.getCanal(trimmedTableName)
 	if err != nil {
-		logger.Error("Error creating canal", err, nil)
-		return
-	}
-
-	table, err := subscriptionCanal.GetTable(s.config.Database.Name, trimmedTableName)
-	if err != nil {
-		logger.Error("Error getting getting table", err, watermill.LogFields{
+		logger.Error("Error creating canal", err, watermill.LogFields{
 			"database": s.config.Database.Name,
 			"table":    tableName,
 		})
 		return
 	}
 
-	sync := newBinlogSync(
+	table, err := subscriptionCanal.GetTable(s.config.Database.Name, trimmedTableName)
+	if err != nil {
+		logger.Error("Error getting table info", err, watermill.LogFields{
+			"database": s.config.Database.Name,
+			"table":    tableName,
+		})
+		return
+	}
+
+	columnsMapping := columnsIndexesMapping{
+		offset:   table.FindColumn(s.config.ColumnsMapping.Offset),
+		uuid:     table.FindColumn(s.config.ColumnsMapping.UUID),
+		metadata: table.FindColumn(s.config.ColumnsMapping.Metadata),
+		payload:  table.FindColumn(s.config.ColumnsMapping.Payload),
+	}
+
+	binlogSync := newBinlogSync(
 		table,
-		columnsIndexesMapping{
-			offset:   table.FindColumn(s.config.ColumnsMapping.Offset),
-			uuid:     table.FindColumn(s.config.ColumnsMapping.UUID),
-			metadata: table.FindColumn(s.config.ColumnsMapping.Metadata),
-			payload:  table.FindColumn(s.config.ColumnsMapping.Payload),
-		},
+		columnsMapping,
 		s.logger,
 	)
-
-	subscriptionCanal.SetEventHandler(sync)
+	subscriptionCanal.SetEventHandler(binlogSync)
 
 	go func() {
 		select {
@@ -278,28 +284,31 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 			subscriptionCanal.Close()
 
 		case <-ctx.Done():
-			logger.Info("Stopping consume, context canceled", nil)
+			logger.Info("Stopping subscriber, context canceled", nil)
 			subscriptionCanal.Close()
 		}
 	}()
 
 	position, err := s.resolveStartingPosition(topic, subscriptionCanal)
 	if err != nil {
-		logger.Error("Error getting zero position", err, nil)
+		logger.Error("Error resolving starting position", err, nil)
 		return
 	}
 
-	go func() {
+	go func(position mysql.Position) {
 		err = subscriptionCanal.RunFrom(position)
 		if err != nil {
-			logger.Error("Error starting sync", err, nil)
+			logger.Error("Error starting sync", err, watermill.LogFields{
+				"binlog_name":     position.Name,
+				"binlog_position": position.Pos,
+			})
 			return
 		}
-	}()
+	}(position)
 
 	for {
 		select {
-		case row := <-sync.RowsStream():
+		case row := <-binlogSync.RowsStream():
 			err = s.process(ctx, row, topic, out, logger)
 			if err != nil {
 				logger.Error("Error processing row", err, nil)
@@ -319,12 +328,11 @@ func (s *BinlogSubscriber) process(
 	out chan *message.Message,
 	logger watermill.LoggerAdapter) error {
 	txOptions := &sql.TxOptions{
-		// TODO: check if it should be modified
 		Isolation: sql.LevelRepeatableRead,
 	}
 	tx, err := s.db.BeginTx(ctx, txOptions)
 	if err != nil {
-		return errors.Wrap(err, "could not begin tx for querying")
+		return errors.Wrap(err, "could not begin tx for processing message")
 	}
 
 	defer func() {
@@ -349,7 +357,8 @@ func (s *BinlogSubscriber) process(
 		return errors.Wrap(err, "cannot get next offset")
 	}
 
-	if r.Offset() <= nextOffset {
+	if nextOffset >= r.Offset() {
+		// message already processed
 		return tx.Rollback()
 	}
 
@@ -499,9 +508,9 @@ func (s *BinlogSubscriber) SubscribeInitialize(topic string) error {
 	})
 
 	for _, q := range initializingQueries {
-		_, err := s.db.ExecContext(context.TODO(), q)
+		_, err := s.db.Exec(q)
 		if err != nil {
-			return errors.Wrap(err, "cound not initialize schema")
+			return errors.Wrap(err, "could not initialize schema")
 		}
 	}
 
