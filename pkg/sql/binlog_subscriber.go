@@ -471,9 +471,8 @@ func (s BinlogSubscriber) getCanal(table string) (*canal.Canal, error) {
 	cfg.User = dbConfig.User
 	cfg.Password = dbConfig.Password
 	cfg.Flavor = dbConfig.Flavour
-	cfg.Dump.TableDB = dbConfig.Name
-	cfg.Dump.Tables = []string{table}
 	cfg.Dump.ExecutionPath = ""
+	cfg.IncludeTableRegex = []string{dbConfig.Name + "." + table}
 
 	serverID, err := getRandUint32()
 	if err != nil {
