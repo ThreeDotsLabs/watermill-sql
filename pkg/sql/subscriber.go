@@ -165,6 +165,9 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 	return out, nil
 }
 
+// Used as a marker to indicate there are no new messages
+const NoMsgUUID = "NoMsgRetrieved"
+
 func (s *Subscriber) consume(ctx context.Context, topic string, out chan *message.Message) {
 	defer s.subscribeWg.Done()
 
@@ -173,6 +176,7 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 		"consumer_group": s.config.ConsumerGroup,
 	})
 
+	var sleepTime time.Duration = 0
 	for {
 		select {
 		case <-s.closing:
@@ -183,8 +187,9 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 			logger.Info("Stopping consume, context canceled", nil)
 			return
 
-		default:
-			// go on querying
+		case <-time.After(sleepTime): // Wait if needed
+			sleepTime = 0
+
 		}
 
 		messageUUID, err := s.query(ctx, topic, out, logger)
@@ -194,8 +199,16 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 				"message_uuid": messageUUID,
 			})
 		} else if err != nil {
-			logger.Error("Error querying for message", err, nil)
-			time.Sleep(s.config.RetryInterval)
+			logger.Error("Error querying for message", err, watermill.LogFields{
+				"wait_time": s.config.RetryInterval,
+			})
+			sleepTime = s.config.RetryInterval
+		} else if messageUUID == NoMsgUUID {
+			// wait until polling for the next message
+			logger.Debug("No messages, waiting until next query", watermill.LogFields{
+				"wait_time": s.config.PollInterval,
+			})
+			sleepTime = s.config.PollInterval
 		}
 	}
 }
@@ -217,7 +230,7 @@ func (s *Subscriber) query(
 	defer func() {
 		if err != nil {
 			rollbackErr := tx.Rollback()
-			if rollbackErr != nil {
+			if rollbackErr != nil && rollbackErr != sql.ErrTxDone {
 				logger.Error("could not rollback tx for querying message", rollbackErr, nil)
 			}
 		} else {
@@ -241,13 +254,7 @@ func (s *Subscriber) query(
 
 	offset, msg, err := s.config.SchemaAdapter.UnmarshalMessage(row)
 	if errors.Cause(err) == sql.ErrNoRows {
-		// wait until polling for the next message
-		logger.Debug("No more messages, waiting until next query", watermill.LogFields{
-			"wait_time": s.config.PollInterval,
-		})
-		tx.Rollback()
-		time.Sleep(s.config.PollInterval)
-		return "", nil
+		return NoMsgUUID, nil
 	} else if err != nil {
 		return "", errors.Wrap(err, "could not unmarshal message from query")
 	}
