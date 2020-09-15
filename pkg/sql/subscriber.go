@@ -165,9 +165,6 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 	return out, nil
 }
 
-// Used as a marker to indicate there are no new messages
-const NoMsgUUID = "NoMsgRetrieved"
-
 func (s *Subscriber) consume(ctx context.Context, topic string, out chan *message.Message) {
 	defer s.subscribeWg.Done()
 
@@ -192,18 +189,20 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 
 		}
 
-		messageUUID, err := s.query(ctx, topic, out, logger)
-		if err != nil && isDeadlock(err) {
-			logger.Debug("Deadlock during querying message, trying again", watermill.LogFields{
-				"err":          err.Error(),
-				"message_uuid": messageUUID,
-			})
-		} else if err != nil {
-			logger.Error("Error querying for message", err, watermill.LogFields{
-				"wait_time": s.config.RetryInterval,
-			})
-			sleepTime = s.config.RetryInterval
-		} else if messageUUID == NoMsgUUID {
+		messageUUID, noMsg, err := s.query(ctx, topic, out, logger)
+		if err != nil {
+			if isDeadlock(err) {
+				logger.Debug("Deadlock during querying message, trying again", watermill.LogFields{
+					"err":          err.Error(),
+					"message_uuid": messageUUID,
+				})
+			} else {
+				logger.Error("Error querying for message", err, watermill.LogFields{
+					"wait_time": s.config.RetryInterval,
+				})
+				sleepTime = s.config.RetryInterval
+			}
+		} else if noMsg {
 			// wait until polling for the next message
 			logger.Debug("No messages, waiting until next query", watermill.LogFields{
 				"wait_time": s.config.PollInterval,
@@ -218,13 +217,13 @@ func (s *Subscriber) query(
 	topic string,
 	out chan *message.Message,
 	logger watermill.LoggerAdapter,
-) (messageUUID string, err error) {
+) (messageUUID string, noMsg bool, err error) {
 	txOptions := &sql.TxOptions{
 		Isolation: sql.LevelRepeatableRead,
 	}
 	tx, err := s.db.BeginTx(ctx, txOptions)
 	if err != nil {
-		return "", errors.Wrap(err, "could not begin tx for querying")
+		return "", false, errors.Wrap(err, "could not begin tx for querying")
 	}
 
 	defer func() {
@@ -254,9 +253,9 @@ func (s *Subscriber) query(
 
 	offset, msg, err := s.config.SchemaAdapter.UnmarshalMessage(row)
 	if errors.Cause(err) == sql.ErrNoRows {
-		return NoMsgUUID, nil
+		return "", true, nil
 	} else if err != nil {
-		return "", errors.Wrap(err, "could not unmarshal message from query")
+		return "", false, errors.Wrap(err, "could not unmarshal message from query")
 	}
 
 	logger = logger.With(watermill.LogFields{
@@ -278,7 +277,7 @@ func (s *Subscriber) query(
 
 		_, err := tx.ExecContext(ctx, consumedQuery, consumedArgs...)
 		if err != nil {
-			return msg.UUID, errors.Wrap(err, "cannot send consumed query")
+			return msg.UUID, false, errors.Wrap(err, "cannot send consumed query")
 		}
 	}
 
@@ -293,7 +292,7 @@ func (s *Subscriber) query(
 
 		result, err := tx.ExecContext(ctx, ackQuery, ackArgs...)
 		if err != nil {
-			return msg.UUID, errors.Wrap(err, "could not get args for acking the message")
+			return msg.UUID, false, errors.Wrap(err, "could not get args for acking the message")
 		}
 
 		rowsAffected, _ := result.RowsAffected()
@@ -303,7 +302,7 @@ func (s *Subscriber) query(
 		})
 	}
 
-	return msg.UUID, nil
+	return msg.UUID, false, nil
 }
 
 // sendMessages sends messages on the output channel.
