@@ -130,7 +130,7 @@ func (s *testPostgreSQLSchema) SchemaInitializingQueries(topic string) []string 
 		"CREATE TABLE IF NOT EXISTS " + s.MessagesTable(topic) + " (",
 		`"offset" SERIAL,`,
 		`"uuid" VARCHAR(255) NOT NULL,`,
-		`"payload" bytea DEFAULT NULL,`,
+		`"payload" byte DEFAULT NULL,`,
 		`"metadata" JSON DEFAULT NULL`,
 		`);`,
 	}, "\n")
