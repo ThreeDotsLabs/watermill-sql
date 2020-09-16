@@ -149,6 +149,7 @@ func getNumber(column *schema.TableColumn, value interface{}) (int64, error) {
 	return 0, errors.New("unsupported type for number column")
 }
 
+// based on https://github.com/siddontang/go-mysql-elasticsearch/blob/fe261969558bf79dffa46d37d2b95f62d65502a1/river/sync.go#L273
 func getBytes(column *schema.TableColumn, value interface{}) ([]byte, error) {
 	switch column.Type {
 	case schema.TYPE_ENUM:
