@@ -3,6 +3,8 @@ package sql_test
 import (
 	stdSQL "database/sql"
 	"fmt"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/stdlib"
 	"os"
 	"testing"
 	"time"
@@ -85,6 +87,24 @@ func newPostgreSQL(t *testing.T) *stdSQL.DB {
 	return db
 }
 
+func newPgxPostgreSQL(t *testing.T) *stdSQL.DB {
+	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
+	if addr == "" {
+		addr = "localhost"
+	}
+
+	connStr := fmt.Sprintf("postgres://watermill:password@%s/watermill?sslmode=disable", addr)
+	conf, err := pgx.ParseConfig(connStr)
+	require.NoError(t, err)
+
+	db := stdlib.OpenDB(*conf)
+
+	err = db.Ping()
+	require.NoError(t, err)
+
+	return db
+}
+
 func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
 	schemaAdapter := &testMySQLSchema{
 		sql.DefaultMySQLSchema{
@@ -125,8 +145,30 @@ func createPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string)
 	return newPubSub(t, newPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
 }
 
+func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+	schemaAdapter := &testPostgreSQLSchema{
+		sql.DefaultPostgreSQLSchema{
+			GenerateMessagesTableName: func(topic string) string {
+				return fmt.Sprintf(`"test_%s"`, topic)
+			},
+		},
+	}
+
+	offsetsAdapter := sql.DefaultPostgreSQLOffsetsAdapter{
+		GenerateMessagesOffsetsTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_offsets_%s"`, topic)
+		},
+	}
+
+	return newPubSub(t, newPgxPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
+}
+
 func createPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 	return createPostgreSQLPubSubWithConsumerGroup(t, "test")
+}
+
+func createPgxPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
+	return createPgxPostgreSQLPubSubWithConsumerGroup(t, "test")
 }
 
 func TestMySQLPublishSubscribe(t *testing.T) {
@@ -158,5 +200,21 @@ func TestPostgreSQLPublishSubscribe(t *testing.T) {
 		features,
 		createPostgreSQLPubSub,
 		createPostgreSQLPubSubWithConsumerGroup,
+	)
+}
+
+func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
+	features := tests.Features{
+		ConsumerGroups:      true,
+		ExactlyOnceDelivery: true,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		createPgxPostgreSQLPubSub,
+		createPgxPostgreSQLPubSubWithConsumerGroup,
 	)
 }

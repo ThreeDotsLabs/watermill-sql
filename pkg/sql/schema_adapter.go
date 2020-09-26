@@ -45,7 +45,7 @@ func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
 			return nil, errors.Wrapf(err, "could not marshal metadata into JSON for message %s", msg.UUID)
 		}
 
-		args = append(args, msg.UUID, msg.Payload, metadata)
+		args = append(args, msg.UUID, []byte(msg.Payload), metadata)
 	}
 
 	return args, nil
