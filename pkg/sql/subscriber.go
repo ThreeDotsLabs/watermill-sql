@@ -32,6 +32,10 @@ type SubscriberConfig struct {
 	// Must be non-negative. Defaults to 1s.
 	RetryInterval time.Duration
 
+	// ErrorLogThreshold is the number of errors in a row that must happen before we log to error instead of info, this can be set to avoid spamming error logs on transient errors.
+	// Must be non-negative. Default is 0 (systematically log to error).
+	ErrorLogThreshold int
+
 	// SchemaAdapter provides the schema-dependent queries and arguments for them, based on topic/message etc.
 	SchemaAdapter SchemaAdapter
 
@@ -69,6 +73,9 @@ func (c SubscriberConfig) validate() error {
 	}
 	if c.OffsetsAdapter == nil {
 		return errors.New("offsets adapter is nil")
+	}
+	if c.ErrorLogThreshold < 0 {
+		return errors.New("error log threshold can't be negative")
 	}
 
 	return nil
@@ -174,6 +181,7 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 	})
 
 	var sleepTime time.Duration = 0
+	errorsInARow := 0
 	for {
 		select {
 		case <-s.closing:
@@ -191,23 +199,36 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 
 		messageUUID, noMsg, err := s.query(ctx, topic, out, logger)
 		if err != nil {
+			errorsInARow += 1
 			if isDeadlock(err) {
 				logger.Debug("Deadlock during querying message, trying again", watermill.LogFields{
 					"err":          err.Error(),
 					"message_uuid": messageUUID,
 				})
 			} else {
-				logger.Error("Error querying for message", err, watermill.LogFields{
-					"wait_time": s.config.RetryInterval,
-				})
+				if errorsInARow >= s.config.ErrorLogThreshold {
+					logger.Error("Error querying for message, will retry", err, watermill.LogFields{
+						"wait_time":    s.config.RetryInterval,
+						"errorsInARow": errorsInARow,
+					})
+				} else {
+					logger.Info("Error querying for message, will retry", watermill.LogFields{
+						"wait_time":    s.config.RetryInterval,
+						"errorsInARow": errorsInARow,
+						"error":        err,
+					})
+				}
 				sleepTime = s.config.RetryInterval
 			}
-		} else if noMsg {
-			// wait until polling for the next message
-			logger.Debug("No messages, waiting until next query", watermill.LogFields{
-				"wait_time": s.config.PollInterval,
-			})
-			sleepTime = s.config.PollInterval
+		} else {
+			errorsInARow = 0
+			if noMsg {
+				// wait until polling for the next message
+				logger.Debug("No messages, waiting until next query", watermill.LogFields{
+					"wait_time": s.config.PollInterval,
+				})
+				sleepTime = s.config.PollInterval
+			}
 		}
 	}
 }
