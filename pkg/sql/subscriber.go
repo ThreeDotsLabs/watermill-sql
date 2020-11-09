@@ -191,8 +191,8 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 
 		messageUUID, noMsg, err := s.query(ctx, topic, out, logger)
 		if err != nil {
-			if isDeadlock(err) {
-				logger.Debug("Deadlock during querying message, trying again", watermill.LogFields{
+			if s.config.SchemaAdapter.ShouldIgnore(err) {
+				logger.Debug("Ignoring error when querying message, trying query again", watermill.LogFields{
 					"err":          err.Error(),
 					"message_uuid": messageUUID,
 				})

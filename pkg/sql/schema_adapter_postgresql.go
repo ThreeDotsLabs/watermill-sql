@@ -43,6 +43,12 @@ func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages
 	return insertQuery, args, nil
 }
 
+func (s DefaultPostgreSQLSchema) ShouldIgnore(err error) bool {
+	// serialization error on repeatable reads: https://www.postgresql.org/docs/10/transaction-iso.html#XACT-REPEATABLE-READ
+	return strings.Contains(err.Error(), "pq: could not serialize access") ||
+		strings.Contains(strings.ToLower(err.Error()), "deadlock")
+}
+
 func defaultInsertMarkers(count int) string {
 	result := strings.Builder{}
 

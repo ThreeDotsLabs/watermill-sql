@@ -25,6 +25,9 @@ type SchemaAdapter interface {
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)
 	// that the appropriate tables exist to write messages to the given topic.
 	SchemaInitializingQueries(topic string) []string
+	// ShouldIgnore indicates that this error should not be considered as hard error and we should simply retry
+	// this is useful for deadlocks and other serialization errors.
+	ShouldIgnore(err error) bool
 }
 
 // Deprecated: Use DefaultMySQLSchema instead.
