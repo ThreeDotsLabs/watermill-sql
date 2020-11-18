@@ -68,11 +68,6 @@ func (s DefaultMySQLSchema) InsertQuery(topic string, msgs message.Messages) (st
 	return insertQuery, args, nil
 }
 
-func (s DefaultMySQLSchema) ShouldIgnore(err error) bool {
-	// ugly, but should be universal for multiple sql implementations
-	return strings.Contains(strings.ToLower(err.Error()), "deadlock")
-}
-
 func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
 	nextOffsetQuery, nextOffsetArgs := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
 	selectQuery := `
