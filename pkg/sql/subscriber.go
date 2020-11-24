@@ -24,7 +24,7 @@ type SubscriberConfig struct {
 	// Must be non-negative. Defaults to 1s.
 	PollInterval time.Duration
 
-	// ResendInterval is the time to wait before resending a nacked message (Prefer using the BackoffManager instead).
+	// ResendInterval is the time to wait before resending a nacked message.
 	// Must be non-negative. Defaults to 1s.
 	ResendInterval time.Duration
 
@@ -195,7 +195,7 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 		}
 
 		messageUUID, noMsg, err := s.query(ctx, topic, out, logger)
-		backoff := s.config.BackoffManager.Compute(logger, noMsg, err)
+		backoff := s.config.BackoffManager.HandleError(logger, noMsg, err)
 		if backoff != 0 {
 			logger.Debug("Backing off querying", watermill.LogFields{
 				"err":          err.Error(),
