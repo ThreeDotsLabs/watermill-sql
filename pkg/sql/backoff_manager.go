@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-// BackoffManager handles errors or empty result sets and compute a backoff and a resulting error.
-// You could for example create a stateful version that compute backoffs depending on the error frequency or make errors more or less persistent
+// BackoffManager handles errors or empty result sets and computes the backoff time.
+// You could for example create a stateful version that computes a backoff depending on the error frequency or make errors more or less persistent.
 type BackoffManager interface {
-	// HandleError handle the error possibly logging it or returning a backoff time depending on the error or the absence of result.
+	// HandleError handles the error possibly logging it or returning a backoff time depending on the error or the absence of the message.
 	HandleError(logger watermill.LoggerAdapter, noMsg bool, err error) time.Duration
 }
 

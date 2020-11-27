@@ -195,12 +195,12 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 		}
 
 		messageUUID, noMsg, err := s.query(ctx, topic, out, logger)
+		logger = logger.With(watermill.LogFields{"message_uuid": messageUUID})
 		backoff := s.config.BackoffManager.HandleError(logger, noMsg, err)
 		if backoff != 0 {
 			logger.Debug("Backing off querying", watermill.LogFields{
-				"err":          err.Error(),
-				"message_uuid": messageUUID,
-				"wait_time":    backoff,
+				"err":       err.Error(),
+				"wait_time": backoff,
 			})
 		}
 		sleepTime = backoff
