@@ -20,7 +20,7 @@ var (
 type SubscriberConfig struct {
 	ConsumerGroup string
 
-	// PollInterval is the interval to wait between subsequent SELECT queries, if no more messages were found in the database.
+	// PollInterval is the interval to wait between subsequent SELECT queries, if no more messages were found in the database (Prefer using the BackoffManager instead).
 	// Must be non-negative. Defaults to 1s.
 	PollInterval time.Duration
 
@@ -28,9 +28,12 @@ type SubscriberConfig struct {
 	// Must be non-negative. Defaults to 1s.
 	ResendInterval time.Duration
 
-	// RetryInterval is the time to wait before resuming querying for messages after an error.
+	// RetryInterval is the time to wait before resuming querying for messages after an error (Prefer using the BackoffManager instead).
 	// Must be non-negative. Defaults to 1s.
 	RetryInterval time.Duration
+
+	// BackoffManager defines how how much to backoff when receiving errors.
+	BackoffManager BackoffManager
 
 	// SchemaAdapter provides the schema-dependent queries and arguments for them, based on topic/message etc.
 	SchemaAdapter SchemaAdapter
@@ -63,6 +66,9 @@ func (c SubscriberConfig) validate() error {
 	}
 	if c.RetryInterval <= 0 {
 		return errors.New("resend interval must be a positive duration")
+	}
+	if c.BackoffManager == nil {
+		c.BackoffManager = NewDefaultBackoffManager(c.PollInterval, c.RetryInterval)
 	}
 	if c.SchemaAdapter == nil {
 		return errors.New("schema adapter is nil")
@@ -186,29 +192,18 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 
 		case <-time.After(sleepTime): // Wait if needed
 			sleepTime = 0
-
 		}
 
 		messageUUID, noMsg, err := s.query(ctx, topic, out, logger)
-		if err != nil {
-			if isDeadlock(err) {
-				logger.Debug("Deadlock during querying message, trying again", watermill.LogFields{
-					"err":          err.Error(),
-					"message_uuid": messageUUID,
-				})
-			} else {
-				logger.Error("Error querying for message", err, watermill.LogFields{
-					"wait_time": s.config.RetryInterval,
-				})
-				sleepTime = s.config.RetryInterval
-			}
-		} else if noMsg {
-			// wait until polling for the next message
-			logger.Debug("No messages, waiting until next query", watermill.LogFields{
-				"wait_time": s.config.PollInterval,
+		logger = logger.With(watermill.LogFields{"message_uuid": messageUUID})
+		backoff := s.config.BackoffManager.HandleError(logger, noMsg, err)
+		if backoff != 0 {
+			logger.Debug("Backing off querying", watermill.LogFields{
+				"err":       err.Error(),
+				"wait_time": backoff,
 			})
-			sleepTime = s.config.PollInterval
 		}
+		sleepTime = backoff
 	}
 }
 
