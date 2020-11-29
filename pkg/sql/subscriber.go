@@ -55,6 +55,9 @@ func (c *SubscriberConfig) setDefaults() {
 	if c.RetryInterval == 0 {
 		c.RetryInterval = time.Second
 	}
+	if c.BackoffManager == nil {
+		c.BackoffManager = NewDefaultBackoffManager(c.PollInterval, c.RetryInterval)
+	}
 }
 
 func (c SubscriberConfig) validate() error {
@@ -66,9 +69,6 @@ func (c SubscriberConfig) validate() error {
 	}
 	if c.RetryInterval <= 0 {
 		return errors.New("resend interval must be a positive duration")
-	}
-	if c.BackoffManager == nil {
-		c.BackoffManager = NewDefaultBackoffManager(c.PollInterval, c.RetryInterval)
 	}
 	if c.SchemaAdapter == nil {
 		return errors.New("schema adapter is nil")
@@ -198,8 +198,10 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 		logger = logger.With(watermill.LogFields{"message_uuid": messageUUID})
 		backoff := s.config.BackoffManager.HandleError(logger, noMsg, err)
 		if backoff != 0 {
+			if err != nil {
+				logger = logger.With(watermill.LogFields{"err": err.Error()})
+			}
 			logger.Debug("Backing off querying", watermill.LogFields{
-				"err":       err.Error(),
 				"wait_time": backoff,
 			})
 		}
