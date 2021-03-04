@@ -1,9 +1,10 @@
 package sql
 
 import (
-	"github.com/ThreeDotsLabs/watermill"
 	"strings"
 	"time"
+
+	"github.com/ThreeDotsLabs/watermill"
 )
 
 // BackoffManager handles errors or empty result sets and computes the backoff time.
@@ -23,18 +24,32 @@ func NewDefaultBackoffManager(pollInterval, retryInterval time.Duration) Backoff
 	return &defaultBackoffManager{
 		retryInterval: retryInterval,
 		pollInterval:  pollInterval,
+		deadlockIndicators: []string{
+			// MySQL deadlock indicator
+			"deadlock",
+
+			// PostgreSQL deadlock indicator
+			"concurrent update",
+		},
 	}
 }
 
 type defaultBackoffManager struct {
-	pollInterval  time.Duration
-	retryInterval time.Duration
+	pollInterval       time.Duration
+	retryInterval      time.Duration
+	deadlockIndicators []string
 }
 
 func (d defaultBackoffManager) HandleError(logger watermill.LoggerAdapter, noMsg bool, err error) time.Duration {
 	if err != nil {
-		// ugly, but should be universal for multiple sql implementations
-		if strings.Contains(strings.ToLower(err.Error()), "deadlock") {
+		var deadlock bool
+		for _, indicator := range d.deadlockIndicators {
+			if strings.Contains(strings.ToLower(err.Error()), indicator) {
+				deadlock = true
+				break
+			}
+		}
+		if deadlock {
 			logger.Debug("Deadlock during querying message, trying again", watermill.LogFields{
 				"err": err.Error(),
 			})
