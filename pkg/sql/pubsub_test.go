@@ -1,21 +1,22 @@
 package sql_test
 
 import (
+	"context"
 	stdSQL "database/sql"
 	"fmt"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/stdlib"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
-
 	driver "github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/stdlib"
 	_ "github.com/lib/pq"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -217,4 +218,53 @@ func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 		createPgxPostgreSQLPubSub,
 		createPgxPostgreSQLPubSubWithConsumerGroup,
 	)
+}
+
+func TestCtxValues(t *testing.T) {
+	pubSubConstructors := []struct {
+		Name        string
+		Constructor func(t *testing.T) (message.Publisher, message.Subscriber)
+	}{
+		{
+			Name:        "mysql",
+			Constructor: createMySQLPubSub,
+		},
+		{
+			Name:        "postgresql",
+			Constructor: createPostgreSQLPubSub,
+		},
+	}
+
+	for _, constructor := range pubSubConstructors {
+		pub, sub := constructor.Constructor(t)
+
+		t.Run("", func(t *testing.T) {
+			t.Parallel()
+			topicName := "topic_" + watermill.NewUUID()
+
+			err := sub.(message.SubscribeInitializer).SubscribeInitialize(topicName)
+			require.NoError(t, err)
+
+			var messagesToPublish []*message.Message
+
+			id := watermill.NewUUID()
+			messagesToPublish = append(messagesToPublish, message.NewMessage(id, nil))
+
+			err = pub.Publish(topicName, messagesToPublish...)
+			require.NoError(t, err, "cannot publish message")
+
+			messages, err := sub.Subscribe(context.Background(), topicName)
+			require.NoError(t, err)
+
+			select {
+			case msg := <-messages:
+				tx, ok := sql.TxFromContext(msg.Context())
+				assert.True(t, ok)
+				assert.NotNil(t, t, tx)
+				assert.IsType(t, &stdSQL.Tx{}, tx)
+			case <-time.After(time.Second * 10):
+				t.Fatal("no message received")
+			}
+		})
+	}
 }

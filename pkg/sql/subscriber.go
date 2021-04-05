@@ -278,7 +278,9 @@ func (s *Subscriber) query(
 		}
 	}
 
-	acked := s.sendMessage(ctx, msg, out, logger)
+	msgCtx := setTxToContext(ctx, tx)
+
+	acked := s.sendMessage(msgCtx, msg, out, logger)
 	if acked {
 		ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(topic, offset, s.config.ConsumerGroup)
 
@@ -337,6 +339,7 @@ ResendLoop:
 			//message nacked, try resending
 			logger.Debug("Message nacked, resending", nil)
 			msg = msg.Copy()
+			msg.SetContext(msgCtx)
 
 			if s.config.ResendInterval != 0 {
 				time.Sleep(s.config.ResendInterval)
