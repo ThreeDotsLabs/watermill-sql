@@ -3,11 +3,11 @@ package sql
 import (
 	"fmt"
 	"github.com/ThreeDotsLabs/watermill"
+	"github.com/go-mysql-org/go-mysql/canal"
+	"github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
+	"github.com/go-mysql-org/go-mysql/schema"
 	"github.com/pkg/errors"
-	"github.com/siddontang/go-mysql/canal"
-	"github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
-	"github.com/siddontang/go-mysql/schema"
 	"strings"
 )
 
@@ -41,6 +41,7 @@ func (b mysqlBinlogSync) OnRotate(_ *replication.RotateEvent) error {
 }
 
 func (b mysqlBinlogSync) OnTableChanged(_ string, _ string) error {
+	// it should either stop or reinitialize
 	return nil
 }
 

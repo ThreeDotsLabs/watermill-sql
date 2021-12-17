@@ -17,8 +17,7 @@ type DefaultMySQLBinlogOffsetsAdapter struct {
 }
 
 func (a DefaultMySQLBinlogOffsetsAdapter) SchemaInitializingQueries(topic string) []string {
-	return []string{`
-		CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
+	return []string{`CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
 		consumer_group VARCHAR(255) NOT NULL,
 		offset_acked BIGINT,
 		offset_consumed BIGINT NOT NULL,

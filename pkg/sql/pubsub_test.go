@@ -48,6 +48,36 @@ func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter 
 	return publisher, subscriber
 }
 
+func newPubSubWithMySQLBinlog(t *testing.T, db *stdSQL.DB, consumerGroup string) (message.Publisher, message.Subscriber) {
+	schemaAdapter := &testMySQLSchema{
+		sql.DefaultMySQLSchema{
+			GenerateMessagesTableName: func(topic string) string {
+				return fmt.Sprintf("`test_%s`", topic)
+			},
+		},
+	}
+
+	publisher, err := sql.NewPublisher(
+		db,
+		sql.PublisherConfig{
+			SchemaAdapter: schemaAdapter,
+		},
+		logger,
+	)
+	require.NoError(t, err)
+
+	subscriber, err := sql.NewBinlogSubscriber(db, sql.BinlogSubscriberConfig{
+		SchemaAdapter:    schemaAdapter,
+		OffsetsAdapter:   sql.DefaultMySQLBinlogOffsetsAdapter{},
+		InitializeSchema: true,
+		Database:         dbConfig,
+		ConsumerGroup:    consumerGroup,
+	}, logger)
+	require.NoError(t, err)
+
+	return publisher, subscriber
+}
+
 func newMySQL(t *testing.T) *stdSQL.DB {
 	addr := os.Getenv("WATERMILL_TEST_MYSQL_HOST")
 	if addr == "" {
@@ -103,8 +133,16 @@ func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (mes
 	return newPubSub(t, newMySQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
 }
 
+func createMySQLPubSubWithBinlogAndConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+	return newPubSubWithMySQLBinlog(t, newMySQL(t), consumerGroup)
+}
+
 func createMySQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 	return createMySQLPubSubWithConsumerGroup(t, "test")
+}
+
+func createMySQLPubSubWithBinlog(t *testing.T) (message.Publisher, message.Subscriber) {
+	return createMySQLPubSubWithBinlogAndConsumerGroup(t, "test")
 }
 
 func createPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
@@ -142,6 +180,22 @@ func TestMySQLPublishSubscribe(t *testing.T) {
 		features,
 		createMySQLPubSub,
 		createMySQLPubSubWithConsumerGroup,
+	)
+}
+
+func TestMySQLPublishSubscribeWithBinlog(t *testing.T) {
+	features := tests.Features{
+		ConsumerGroups:      true,
+		ExactlyOnceDelivery: true,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		createMySQLPubSubWithBinlog,
+		createMySQLPubSubWithBinlogAndConsumerGroup,
 	)
 }
 

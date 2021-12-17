@@ -15,6 +15,28 @@ import (
 
 // TestDefaultMySQLSchema checks if the SQL schema defined in DefaultMySQLSchema is correctly executed
 // and if message marshaling works as intended.
+func TestDefaultMySQLSchemaWithBinlog(t *testing.T) {
+	db := newMySQL(t)
+
+	publisher, err := sql.NewPublisher(db, sql.PublisherConfig{
+		SchemaAdapter:        sql.DefaultMySQLSchema{},
+		AutoInitializeSchema: true,
+	}, logger)
+	require.NoError(t, err)
+
+	subscriber, err := sql.NewBinlogSubscriber(db, sql.BinlogSubscriberConfig{
+		SchemaAdapter:    sql.DefaultMySQLSchema{},
+		OffsetsAdapter:   sql.DefaultMySQLBinlogOffsetsAdapter{},
+		InitializeSchema: true,
+		Database:         dbConfig,
+	}, logger)
+	require.NoError(t, err)
+
+	testOneMessage(t, publisher, subscriber)
+}
+
+// TestDefaultMySQLSchema checks if the SQL schema defined in DefaultMySQLSchema is correctly executed
+// and if message marshaling works as intended.
 func TestDefaultMySQLSchema(t *testing.T) {
 	db := newMySQL(t)
 
@@ -88,7 +110,7 @@ func testOneMessage(t *testing.T, publisher message.Publisher, subscriber messag
 	messages, err := subscriber.Subscribe(context.Background(), topic)
 	require.NoError(t, err)
 
-	msg := message.NewMessage(watermill.NewULID(), []byte(`{"json": "field"}`))
+	msg := message.NewMessage(watermill.NewULID(), []byte(`{"json":"field"}`))
 	err = publisher.Publish(topic, msg)
 	require.NoError(t, err)
 

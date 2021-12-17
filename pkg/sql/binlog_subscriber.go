@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-mysql-org/go-mysql/canal"
+	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/pkg/errors"
-	"github.com/siddontang/go-mysql/canal"
-	"github.com/siddontang/go-mysql/mysql"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -147,7 +147,7 @@ type BinlogSubscriber struct {
 }
 
 func NewBinlogSubscriber(db beginner, config BinlogSubscriberConfig, logger watermill.LoggerAdapter) (*BinlogSubscriber, error) {
-	// TODO: probably it should be removed, and the db connection should be setup based on configuration
+	// TODO: maybe it would make more sense to setup connection using the db config?
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
@@ -245,7 +245,7 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 	// TODO: fix schema adapter to avoid that
 	trimmedTableName := strings.Trim(tableName, "`")
 
-	subscriptionCanal, err := s.getCanal(trimmedTableName)
+	subscriptionCanal, err := s.newCanal(trimmedTableName)
 	if err != nil {
 		logger.Error("Error creating canal", err, watermill.LogFields{
 			"database": s.config.Database.Name,
@@ -463,7 +463,7 @@ ResendLoop:
 	}
 }
 
-func (s BinlogSubscriber) getCanal(table string) (*canal.Canal, error) {
+func (s BinlogSubscriber) newCanal(table string) (*canal.Canal, error) {
 	dbConfig := s.config.Database
 
 	cfg := canal.NewDefaultConfig()
@@ -492,11 +492,6 @@ func getRandUint32() (uint32, error) {
 }
 
 func (s *BinlogSubscriber) SubscribeInitialize(topic string) error {
-	err := validateTopicName(topic)
-	if err != nil {
-		return err
-	}
-
 	initializingQueries := s.config.SchemaAdapter.SchemaInitializingQueries(topic)
 	if s.config.OffsetsAdapter != nil {
 		initializingQueries = append(initializingQueries, s.config.OffsetsAdapter.SchemaInitializingQueries(topic)...)
