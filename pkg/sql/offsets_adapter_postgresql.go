@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// DefaultPostgreSQLOffsetsAdapter is adapter for storing offsets in PostgreSQL database.
+// DefaultPostgreSQLOffsetsAdapter is adapter for storing offsets in PostgreSQL Database.
 //
 // DefaultPostgreSQLOffsetsAdapter is designed to support multiple subscribers with exactly once delivery
 // and guaranteed order.

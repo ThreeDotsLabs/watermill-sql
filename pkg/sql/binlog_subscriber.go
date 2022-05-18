@@ -3,15 +3,12 @@ package sql
 import (
 	"context"
 	"database/sql"
-	"encoding/binary"
-	"encoding/json"
 	"fmt"
-	"math/rand"
+	"github.com/ThreeDotsLabs/watermill-sql/internal/streamer"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-mysql-org/go-mysql/canal"
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/pkg/errors"
 
@@ -206,15 +203,15 @@ func (s *BinlogSubscriber) Subscribe(ctx context.Context, topic string) (o <-cha
 		}
 	}
 
-	// the information about closing the subscriber is propagated through ctx
-	ctx, cancel := context.WithCancel(ctx)
 	out := make(chan *message.Message)
 
 	s.subscribeWg.Add(1)
 	go func() {
+		defer s.subscribeWg.Done()
+
 		s.consume(ctx, topic, out)
+
 		close(out)
-		cancel()
 	}()
 
 	return out, nil
@@ -234,8 +231,6 @@ func (s *BinlogSubscriber) Close() error {
 }
 
 func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *message.Message) {
-	defer s.subscribeWg.Done()
-
 	logger := s.logger.With(watermill.LogFields{
 		"topic":          topic,
 		"consumer_group": s.config.ConsumerGroup,
@@ -245,70 +240,46 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 	// TODO: fix schema adapter to avoid that
 	trimmedTableName := strings.Trim(tableName, "`")
 
-	subscriptionCanal, err := s.newCanal(trimmedTableName)
+	startingPostion, err := s.resolveStartingPosition(topic)
 	if err != nil {
-		logger.Error("Error creating canal", err, watermill.LogFields{
-			"database": s.config.Database.Name,
-			"table":    tableName,
-		})
+		logger.Error("Cannot resolve starting position", err, watermill.LogFields{})
 		return
 	}
 
-	table, err := subscriptionCanal.GetTable(s.config.Database.Name, trimmedTableName)
-	if err != nil {
-		logger.Error("Error getting table info", err, watermill.LogFields{
-			"database": s.config.Database.Name,
-			"table":    tableName,
-		})
-		return
-	}
-
-	columnsMapping := columnsIndexesMapping{
-		offset:   table.FindColumn(s.config.ColumnsMapping.Offset),
-		uuid:     table.FindColumn(s.config.ColumnsMapping.UUID),
-		metadata: table.FindColumn(s.config.ColumnsMapping.Metadata),
-		payload:  table.FindColumn(s.config.ColumnsMapping.Payload),
-	}
-
-	binlogSync := newBinlogSync(
-		table,
-		columnsMapping,
+	streamer, err := streamer.NewStreamer(
+		streamer.StreamsConfig{
+			Table: trimmedTableName,
+			Database: streamer.Database{
+				Host:     s.config.Database.Host,
+				Port:     s.config.Database.Port,
+				User:     s.config.Database.User,
+				Password: s.config.Database.Password,
+				Name:     s.config.Database.Name,
+				Flavour:  s.config.Database.Flavour,
+			},
+			ColumnsMapping: streamer.ColumnsMapping{
+				UUID:     s.config.ColumnsMapping.UUID,
+				Offset:   s.config.ColumnsMapping.Offset,
+				Payload:  s.config.ColumnsMapping.Payload,
+				Metadata: s.config.ColumnsMapping.Metadata,
+			},
+		},
 		s.logger,
 	)
-	subscriptionCanal.SetEventHandler(binlogSync)
-
-	go func() {
-		select {
-		case <-s.closing:
-			logger.Info("Discarding queued message, subscriber closing", nil)
-			subscriptionCanal.Close()
-
-		case <-ctx.Done():
-			logger.Info("Stopping subscriber, context canceled", nil)
-			subscriptionCanal.Close()
-		}
-	}()
-
-	position, err := s.resolveStartingPosition(topic, subscriptionCanal)
 	if err != nil {
-		logger.Error("Error resolving starting position", err, nil)
+		logger.Error("Error creating streamer", err, nil)
 		return
 	}
 
-	go func(position mysql.Position) {
-		err = subscriptionCanal.RunFrom(position)
-		if err != nil {
-			logger.Error("Error starting sync", err, watermill.LogFields{
-				"binlog_name":     position.Name,
-				"binlog_position": position.Pos,
-			})
-			return
-		}
-	}(position)
+	rowChan, err := streamer.Stream(ctx, startingPostion)
+	if err != nil {
+		logger.Error("Error streaming", err, nil)
+		return
+	}
 
 	for {
 		select {
-		case row := <-binlogSync.RowsStream():
+		case row := <-rowChan:
 			err = s.process(ctx, row, topic, out, logger)
 			if err != nil {
 				logger.Error("Error processing row", err, nil)
@@ -316,6 +287,11 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 			}
 		case <-s.closing:
 			logger.Info("Discarding queued message, subscriber closing", nil)
+			streamer.Close()
+			return
+		case <-ctx.Done():
+			logger.Info("Stopping subscriber, context canceled", nil)
+			streamer.Close()
 			return
 		}
 	}
@@ -323,7 +299,7 @@ func (s *BinlogSubscriber) consume(ctx context.Context, topic string, out chan *
 
 func (s *BinlogSubscriber) process(
 	ctx context.Context,
-	r Row,
+	r streamer.Row,
 	topic string,
 	out chan *message.Message,
 	logger watermill.LoggerAdapter) error {
@@ -364,10 +340,10 @@ func (s *BinlogSubscriber) process(
 
 	consumedQuery, consumedArgs := s.config.OffsetsAdapter.ConsumedMessageQuery(
 		topic,
-		int(r.offset),
+		int(r.Offset()),
 		s.config.ConsumerGroup,
-		r.position.Name,
-		r.position.Pos,
+		r.Position().Name,
+		r.Position().Pos,
 	)
 	if consumedQuery != "" {
 		logger.Trace("Executing query to confirm message consumed", watermill.LogFields{
@@ -388,7 +364,7 @@ func (s *BinlogSubscriber) process(
 
 	acked := s.sendMessage(ctx, msg, out, logger)
 	if acked {
-		ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(topic, int(r.offset), s.config.ConsumerGroup)
+		ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(topic, int(r.Offset()), s.config.ConsumerGroup)
 
 		logger.Trace("Executing ack message query", watermill.LogFields{
 			"query":      ackQuery,
@@ -463,34 +439,6 @@ ResendLoop:
 	}
 }
 
-func (s BinlogSubscriber) newCanal(table string) (*canal.Canal, error) {
-	dbConfig := s.config.Database
-
-	cfg := canal.NewDefaultConfig()
-	cfg.Addr = fmt.Sprintf("%s:%s", dbConfig.Host, dbConfig.Port)
-	cfg.User = dbConfig.User
-	cfg.Password = dbConfig.Password
-	cfg.Flavor = dbConfig.Flavour
-	cfg.Dump.ExecutionPath = ""
-	cfg.IncludeTableRegex = []string{dbConfig.Name + "." + table}
-
-	serverID, err := getRandUint32()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not generate random uint32")
-	}
-
-	cfg.ServerID = serverID
-
-	return canal.NewCanal(cfg)
-}
-
-func getRandUint32() (uint32, error) {
-	slaveId := make([]byte, 4)
-	_, err := rand.Read(slaveId)
-
-	return binary.LittleEndian.Uint32(slaveId), err
-}
-
 func (s *BinlogSubscriber) SubscribeInitialize(topic string) error {
 	initializingQueries := s.config.SchemaAdapter.SchemaInitializingQueries(topic)
 	if s.config.OffsetsAdapter != nil {
@@ -516,96 +464,21 @@ type ExtendedSchemaAdapter interface {
 	MessagesTable(topic string) string
 }
 
-func (s *BinlogSubscriber) resolveStartingPosition(topic string, c *canal.Canal) (mysql.Position, error) {
-	rr, err := c.Execute("SHOW BINARY LOGS")
-	if err != nil {
-		return mysql.Position{}, err
-	}
+//TODO: get rid of this, it can be heavily simplified
+func (s *BinlogSubscriber) resolveStartingPosition(topic string) (mysql.Position, error) {
 	positionQuery, positionQueryArgs := s.config.OffsetsAdapter.PositionQuery(topic, s.config.ConsumerGroup)
 	row := s.db.QueryRow(positionQuery, positionQueryArgs...)
 	var logName string
 	var logPosition uint32
-	err = row.Scan(&logName, &logPosition)
+	err := row.Scan(&logName, &logPosition)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			name, err := rr.GetString(0, 0)
-			if err != nil {
-				return mysql.Position{}, err
-			}
-			return mysql.Position{Name: name, Pos: uint32(0)}, nil
+			// no starting position found, start from beginning
+			return mysql.Position{}, nil
 		}
+
 		return mysql.Position{}, err
 	}
 
-	for i := 0; i < rr.RowNumber(); i++ {
-		logNameInDb, err := rr.GetString(i, 0)
-		if err != nil {
-			return mysql.Position{}, err
-		}
-
-		if logName == logNameInDb {
-			return mysql.Position{
-				Name: logName,
-				Pos:  logPosition,
-			}, nil
-		}
-	}
-
-	name, err := rr.GetString(0, 0)
-	if err != nil {
-		return mysql.Position{}, err
-	}
-	return mysql.Position{Name: name, Pos: uint32(0)}, nil
-}
-
-type columnsIndexesMapping struct {
-	offset   int
-	uuid     int
-	metadata int
-	payload  int
-}
-
-type Row struct {
-	offset   int64
-	uuid     []byte
-	metadata []byte
-	payload  []byte
-	position mysql.Position
-}
-
-func newRow(offset int64, uuid []byte, metadata []byte, payload []byte, position mysql.Position) Row {
-	return Row{offset: offset, uuid: uuid, metadata: metadata, payload: payload, position: position}
-}
-
-func (r Row) Position() mysql.Position {
-	return r.position
-}
-
-func (r Row) Payload() []byte {
-	return r.payload
-}
-
-func (r Row) Metadata() []byte {
-	return r.metadata
-}
-
-func (r Row) Uuid() []byte {
-	return r.uuid
-}
-
-func (r Row) Offset() int64 {
-	return r.offset
-}
-
-func (r Row) ToMessage() (*message.Message, error) {
-	msg := message.NewMessage(string(r.uuid), r.payload)
-
-	if r.metadata != nil {
-		err := json.Unmarshal(r.metadata, &msg.Metadata)
-		if err != nil {
-			return nil, errors.Wrap(err, "could not unmarshal metadata as JSON")
-		}
-	}
-
-	return msg, nil
+	return mysql.Position{Name: logName, Pos: logPosition}, nil
 }

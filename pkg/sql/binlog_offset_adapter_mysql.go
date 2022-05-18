@@ -37,10 +37,12 @@ func (a DefaultMySQLBinlogOffsetsAdapter) ConsumedMessageQuery(topic string, off
 func (a DefaultMySQLBinlogOffsetsAdapter) PositionQuery(topic, consumerGroup string) (string, []interface{}) {
 	return `SELECT log_name, log_position
 			FROM ` + a.MessagesOffsetsTable(topic) + `
-			WHERE consumer_group=?`,
+			WHERE consumer_group=?
+			LIMIT 1`,
 		[]interface{}{consumerGroup}
 }
 
+//TODO: I should save position in here as well, but I don't know how to do it.
 func (a DefaultMySQLBinlogOffsetsAdapter) AckMessageQuery(topic string, offset int, consumerGroup string) (string, []interface{}) {
 	ackQuery := `UPDATE ` + a.MessagesOffsetsTable(topic) + ` SET offset_acked = ? WHERE consumer_group = ?`
 	return ackQuery, []interface{}{offset, consumerGroup}

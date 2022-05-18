@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	waitTime = time.Second
+	waitTime = time.Second * 100000
 )
 
 var (
@@ -27,7 +27,9 @@ var (
 	}
 )
 
-func TestBinlogSubscriber(t *testing.T) {
+func TestBinlogSubscriber_Subscribe_multiple_consumer_groups(t *testing.T) {
+	t.Parallel()
+
 	db := newMySQL(t)
 	firstConsumerGroupName := "first_consumer_group_" + watermill.NewULID()
 	secondConsumerGroupName := "second_consumer_group_" + watermill.NewULID()
@@ -41,7 +43,7 @@ func TestBinlogSubscriber(t *testing.T) {
 	require.NoError(t, err)
 
 	// publish first batch the messages
-	firstMessagesBatch := getTestMessages(11)
+	firstMessagesBatch := getTestMessages(100)
 	for _, msg := range firstMessagesBatch {
 		err = publisher.Publish(topic, msg)
 		require.NoError(t, err)
@@ -71,7 +73,7 @@ func TestBinlogSubscriber(t *testing.T) {
 	})
 
 	// publish second batch the messages
-	secondMessagesBatch := getTestMessages(13)
+	secondMessagesBatch := getTestMessages(100)
 	err = publisher.Publish(topic, secondMessagesBatch...)
 	require.NoError(t, err)
 
@@ -98,7 +100,7 @@ func TestBinlogSubscriber(t *testing.T) {
 		assertMessageChannelClosed(t, messageStream)
 	})
 
-	t.Run("second consumer group should receive all messages from both batches and in order", func(t *testing.T) {
+	t.Run("second consumer group should receive all messages from both batches and in-order", func(t *testing.T) {
 		subscriber, err := sql.NewBinlogSubscriber(db, sql.BinlogSubscriberConfig{
 			ConsumerGroup:    secondConsumerGroupName,
 			SchemaAdapter:    sql.DefaultMySQLSchema{},
@@ -123,7 +125,9 @@ func TestBinlogSubscriber(t *testing.T) {
 	})
 }
 
-func TestBinlogSubscriber_multiple_subscribers(t *testing.T) {
+func TestBinlogSubscriber_Subscribe_multiple_subscriptions_concurrently(t *testing.T) {
+	t.Parallel()
+
 	db := newMySQL(t)
 	consumerGroup := "consumer_group_" + watermill.NewULID()
 	publisher, err := sql.NewPublisher(db, sql.PublisherConfig{
@@ -133,24 +137,19 @@ func TestBinlogSubscriber_multiple_subscribers(t *testing.T) {
 	require.NoError(t, err)
 
 	topics := map[string][]*message.Message{
-		"first_" + watermill.NewULID():  getTestMessages(7),
-		"second_" + watermill.NewULID(): getTestMessages(11),
-		"third_" + watermill.NewULID():  getTestMessages(13),
+		"first_" + watermill.NewULID():  getTestMessages(12),
+		"second_" + watermill.NewULID(): getTestMessages(32),
+		"third_" + watermill.NewULID():  getTestMessages(21),
 	}
-
-	var wg sync.WaitGroup
 
 	for topic, messages := range topics {
-		wg.Add(1)
-		go func(topic string, messages []*message.Message) {
-			err = publisher.Publish(topic, messages...)
-			require.NoError(t, err)
+		err = publisher.Publish(topic, messages...)
+		require.NoError(t, err)
 
-			wg.Done()
-		}(topic, messages)
+		// force creation of new binlog log file
+		_, err := db.Exec("FLUSH LOGS")
+		require.NoError(t, err)
 	}
-
-	wg.Wait()
 
 	subscriber, err := sql.NewBinlogSubscriber(db, sql.BinlogSubscriberConfig{
 		ConsumerGroup:    consumerGroup,
@@ -161,11 +160,14 @@ func TestBinlogSubscriber_multiple_subscribers(t *testing.T) {
 	}, logger)
 	require.NoError(t, err)
 
+	var wg sync.WaitGroup
+	wg.Add(len(topics))
 	for topic, expectedMessages := range topics {
-		wg.Add(1)
-		messageStream, err := subscriber.Subscribe(context.Background(), topic)
-		require.NoError(t, err)
+		topic := topic
 		go func(messages []*message.Message) {
+			messageStream, err := subscriber.Subscribe(context.Background(), topic)
+			require.NoError(t, err)
+
 			actualMessages := waitForMessages(t, len(messages), messageStream)
 
 			assertMessages(t, messages, actualMessages)
@@ -180,17 +182,23 @@ func TestBinlogSubscriber_multiple_subscribers(t *testing.T) {
 }
 
 func waitForMessages(t *testing.T, expectedNumberOfMessages int, messages <-chan *message.Message) []*message.Message {
+	t.Helper()
+
 	actualMessages := []*message.Message{}
 
 	for i := 0; i < expectedNumberOfMessages; i++ {
 		select {
-		case received := <-messages:
+		case received, ok := <-messages:
+			if !ok {
+				t.Fatalf("Message channel closed unexpectedly")
+			}
 			received.Ack()
 			actualMessages = append(actualMessages, received)
 		case <-time.After(waitTime):
-			t.Error("Didn't receive any messages")
+			t.Fatalf("Didn't receive expected number of messages")
 		}
 	}
+
 	return actualMessages
 }
 

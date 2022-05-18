@@ -20,7 +20,7 @@ var (
 type SubscriberConfig struct {
 	ConsumerGroup string
 
-	// PollInterval is the interval to wait between subsequent SELECT queries, if no more messages were found in the database.
+	// PollInterval is the interval to wait between subsequent SELECT queries, if no more messages were found in the Database.
 	// Must be non-negative. Defaults to 1s.
 	PollInterval time.Duration
 
@@ -75,7 +75,7 @@ func (c SubscriberConfig) validate() error {
 }
 
 // Subscriber makes SELECT queries on the chosen table with the interval defined in the config.
-// The rows are unmarshaled into Watermill messages.
+// The rowsCh are unmarshaled into Watermill messages.
 type Subscriber struct {
 	consumerIdBytes  []byte
 	consumerIdString string

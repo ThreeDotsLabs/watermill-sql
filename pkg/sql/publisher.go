@@ -18,9 +18,9 @@ type PublisherConfig struct {
 	// SchemaAdapter provides the schema-dependent queries and arguments for them, based on topic/message etc.
 	SchemaAdapter SchemaAdapter
 
-	// AutoInitializeSchema enables initialization of schema database during publish.
+	// AutoInitializeSchema enables initialization of schema Database during publish.
 	// Schema is initialized once per topic per publisher instance.
-	// AutoInitializeSchema is forbidden if using an ongoing transaction as database handle;
+	// AutoInitializeSchema is forbidden if using an ongoing transaction as Database handle;
 	// That could result in an implicit commit of the transaction by a CREATE TABLE statement.
 	AutoInitializeSchema bool
 }
@@ -36,7 +36,7 @@ func (c PublisherConfig) validate() error {
 func (c *PublisherConfig) setDefaults() {
 }
 
-// Publisher inserts the Messages as rows into a SQL table..
+// Publisher inserts the Messages as rowsCh into a SQL table..
 type Publisher struct {
 	config PublisherConfig
 
@@ -66,7 +66,7 @@ func NewPublisher(db contextExecutor, config PublisherConfig, logger watermill.L
 
 	if config.AutoInitializeSchema && isTx(db) {
 		// either use a prior schema with a tx db handle, or don't use tx with AutoInitializeSchema
-		return nil, errors.New("tried to use AutoInitializeSchema with a database handle that looks like" +
+		return nil, errors.New("tried to use AutoInitializeSchema with a Database handle that looks like" +
 			"an ongoing transaction; this may result in an implicit commit")
 	}
 
@@ -82,9 +82,9 @@ func NewPublisher(db contextExecutor, config PublisherConfig, logger watermill.L
 	}, nil
 }
 
-// Publish inserts the messages as rows into the MessagesTable.
+// Publish inserts the messages as rowsCh into the MessagesTable.
 // Order is guaranteed for messages within one call.
-// Publish is blocking until all rows have been added to the Publisher's transaction.
+// Publish is blocking until all rowsCh have been added to the Publisher's transaction.
 // Publisher doesn't guarantee publishing messages in a single transaction,
 // but the constructor accepts both *sql.DB and *sql.Tx, so transactions may be handled upstream by the user.
 func (p *Publisher) Publish(topic string, messages ...*message.Message) (err error) {

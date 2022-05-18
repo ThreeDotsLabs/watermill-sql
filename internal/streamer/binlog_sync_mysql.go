@@ -1,4 +1,4 @@
-package sql
+package streamer
 
 import (
 	"fmt"
@@ -9,53 +9,77 @@ import (
 	"github.com/go-mysql-org/go-mysql/schema"
 	"github.com/pkg/errors"
 	"strings"
+	"sync"
 )
 
-type mysqlBinlogSync struct {
-	table      *schema.Table
-	mapping    columnsIndexesMapping
-	logger     watermill.LoggerAdapter
-	position   mysql.Position
-	rowsStream chan Row
+type BinlogEventHandler struct {
+	mapping              columnsIndexesMapping
+	logger               watermill.LoggerAdapter
+	latestPositionToSave mysql.Position
+	rowsCh               chan Row
+	mu                   sync.RWMutex
+	closed               bool
 }
 
-func newBinlogSync(
-	table *schema.Table,
+func (b *BinlogEventHandler) RowsCh() <-chan Row {
+	return b.rowsCh
+}
+
+func NewBinlogEventHandler(
 	mapping columnsIndexesMapping,
 	logger watermill.LoggerAdapter,
-) *mysqlBinlogSync {
-	return &mysqlBinlogSync{
-		table:      table,
-		mapping:    mapping,
-		logger:     logger.With(watermill.LogFields{"table_to_sync": table.Name}),
-		rowsStream: make(chan Row),
+) *BinlogEventHandler {
+	return &BinlogEventHandler{
+		mapping: mapping,
+		logger:  logger,
+		rowsCh:  make(chan Row),
+		closed:  false,
+		mu:      sync.RWMutex{},
 	}
 }
 
-func (b mysqlBinlogSync) RowsStream() <-chan Row {
-	return b.rowsStream
-}
+func (b *BinlogEventHandler) OnRotate(e *replication.RotateEvent) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-func (b mysqlBinlogSync) OnRotate(_ *replication.RotateEvent) error {
+	b.latestPositionToSave = mysql.Position{
+		Name: string(e.NextLogName),
+		Pos:  uint32(e.Position),
+	}
+
 	return nil
 }
 
-func (b mysqlBinlogSync) OnTableChanged(_ string, _ string) error {
-	// it should either stop or reinitialize
+func (b *BinlogEventHandler) OnTableChanged(_ string, _ string) error {
+	// recalculate column's indices
+
 	return nil
 }
 
-func (b mysqlBinlogSync) OnDDL(_ mysql.Position, _ *replication.QueryEvent) error {
+func (b *BinlogEventHandler) OnDDL(p mysql.Position, _ *replication.QueryEvent) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.latestPositionToSave = p
+
 	return nil
 }
 
-func (b mysqlBinlogSync) OnRow(e *canal.RowsEvent) error {
+func (b *BinlogEventHandler) OnXID(p mysql.Position) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.latestPositionToSave = p
+
+	return nil
+}
+
+func (b *BinlogEventHandler) OnRow(e *canal.RowsEvent) error {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	var firstValueIndex = 0
 	var stepLength = 1
-
-	if b.table.Name != e.Table.Name {
-		return nil
-	}
 
 	if e.Action == canal.UpdateAction {
 		firstValueIndex = 1
@@ -69,7 +93,8 @@ func (b mysqlBinlogSync) OnRow(e *canal.RowsEvent) error {
 			if err != nil {
 				return err
 			}
-			b.rowsStream <- row
+
+			b.rowsCh <- row
 		}
 	case canal.UpdateAction, canal.DeleteAction:
 	default:
@@ -78,24 +103,33 @@ func (b mysqlBinlogSync) OnRow(e *canal.RowsEvent) error {
 	return nil
 }
 
-func (b mysqlBinlogSync) OnXID(_ mysql.Position) error {
+func (b *BinlogEventHandler) OnGTID(_ mysql.GTIDSet) error {
 	return nil
 }
 
-func (b mysqlBinlogSync) OnGTID(_ mysql.GTIDSet) error {
+func (b *BinlogEventHandler) OnPosSynced(_ mysql.Position, _ mysql.GTIDSet, _ bool) error {
 	return nil
 }
 
-func (b *mysqlBinlogSync) OnPosSynced(position mysql.Position, _ mysql.GTIDSet, _ bool) error {
-	b.position = position
-	return nil
+func (b *BinlogEventHandler) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.closed {
+		return
+	}
+
+	b.closed = true
+	close(b.rowsCh)
+
+	return
 }
 
-func (b mysqlBinlogSync) String() string {
-	return "mysqlBinlogSync_" + b.table.Name
+func (b *BinlogEventHandler) String() string {
+	return "mysqlBinlogSync"
 }
 
-func (b mysqlBinlogSync) mapRow(table *schema.Table, r []interface{}) (Row, error) {
+func (b *BinlogEventHandler) mapRow(table *schema.Table, r []interface{}) (Row, error) {
 	mapping := b.mapping
 
 	payload, err := getBytes(&table.Columns[mapping.payload], r[mapping.payload])
@@ -118,7 +152,7 @@ func (b mysqlBinlogSync) mapRow(table *schema.Table, r []interface{}) (Row, erro
 		return Row{}, errors.Wrap(err, "could not get number for offset")
 	}
 
-	return newRow(offset, uuid, metadata, payload, b.position), nil
+	return newRow(offset, uuid, metadata, payload, b.latestPositionToSave), nil
 }
 
 func getNumber(column *schema.TableColumn, value interface{}) (int64, error) {
@@ -192,6 +226,8 @@ func getBytes(column *schema.TableColumn, value interface{}) ([]byte, error) {
 		}
 	case schema.TYPE_JSON:
 		switch v := value.(type) {
+		case nil:
+			return []byte{}, nil
 		case string:
 			return []byte(v), nil
 		case []byte:
@@ -201,6 +237,18 @@ func getBytes(column *schema.TableColumn, value interface{}) ([]byte, error) {
 		switch v := value.(type) {
 		case string:
 			return []byte(v), nil
+		}
+	case schema.TYPE_BINARY:
+		switch v := value.(type) {
+		case string:
+			return []byte(v), nil
+		case []byte:
+			return v, nil
+		default:
+			if v == nil {
+				return []byte{}, nil
+			}
+			return []byte{}, fmt.Errorf("could not resolve value for column of type %d", column.Type)
 		}
 	}
 
