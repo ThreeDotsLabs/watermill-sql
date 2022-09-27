@@ -19,6 +19,9 @@ test_stress:
 test_reconnect:
 	go test -tags=reconnect ./...
 
+build:
+	go build ./...
+
 fmt:
 	go fmt ./...
 	goimports -l -w .
