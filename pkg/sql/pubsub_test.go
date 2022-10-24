@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	logger = watermill.NewStdLogger(true, true)
+	logger = watermill.NewStdLogger(true, false)
 )
 
 func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
