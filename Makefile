@@ -1,5 +1,5 @@
 up:
-	docker-compose up
+	docker-compose up -d
 
 test:
 	go test -parallel 20 ./...
@@ -18,6 +18,10 @@ test_stress:
 
 test_reconnect:
 	go test -tags=reconnect ./...
+
+wait:
+	go run github.com/ThreeDotsLabs/watermill/dev/wait-for@github-actions mysql:3306
+
 
 build:
 	go build ./...
