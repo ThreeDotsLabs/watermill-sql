@@ -20,8 +20,7 @@ test_reconnect:
 	go test -tags=reconnect ./...
 
 wait:
-	go run github.com/ThreeDotsLabs/watermill/dev/wait-for@github-actions mysql:3306
-
+	go run github.com/ThreeDotsLabs/watermill/dev/wait-for@github-actions localhost:3306
 
 build:
 	go build ./...
