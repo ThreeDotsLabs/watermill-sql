@@ -201,7 +201,7 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 			if err != nil {
 				logger = logger.With(watermill.LogFields{"err": err.Error()})
 			}
-			logger.Debug("Backing off querying", watermill.LogFields{
+			logger.Trace("Backing off querying", watermill.LogFields{
 				"wait_time": backoff,
 			})
 		}

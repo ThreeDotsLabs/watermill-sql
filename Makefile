@@ -1,8 +1,8 @@
 up:
-	docker-compose up
+	docker-compose up -d
 
 test:
-	go test -parallel 20 ./...
+	go test -parallel 20 -timeout=30m ./...
 
 test_v:
 	go test -parallel 20 -v ./...
@@ -18,6 +18,12 @@ test_stress:
 
 test_reconnect:
 	go test -tags=reconnect ./...
+
+wait:
+	go run github.com/ThreeDotsLabs/wait-for@latest localhost:3306 localhost:5432
+
+build:
+	go build ./...
 
 fmt:
 	go fmt ./...

@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	logger = watermill.NewStdLogger(true, true)
+	logger = watermill.NewStdLogger(true, false)
 )
 
 func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
@@ -39,8 +39,8 @@ func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter 
 		sql.SubscriberConfig{
 			ConsumerGroup: consumerGroup,
 
-			PollInterval:   100 * time.Millisecond,
-			ResendInterval: 50 * time.Millisecond,
+			PollInterval:   1 * time.Millisecond,
+			ResendInterval: 5 * time.Millisecond,
 			SchemaAdapter:  schemaAdapter,
 			OffsetsAdapter: offsetsAdapter,
 		},
