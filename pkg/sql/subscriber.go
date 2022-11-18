@@ -86,7 +86,7 @@ type Subscriber struct {
 	consumerIdBytes  []byte
 	consumerIdString string
 
-	db     beginner
+	db     Beginner
 	config SubscriberConfig
 
 	subscribeWg *sync.WaitGroup
@@ -96,7 +96,7 @@ type Subscriber struct {
 	logger watermill.LoggerAdapter
 }
 
-func NewSubscriber(db beginner, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
+func NewSubscriber(db Beginner, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
