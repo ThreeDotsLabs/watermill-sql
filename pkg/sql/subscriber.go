@@ -191,7 +191,6 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 			return
 
 		case <-time.After(sleepTime): // Wait if needed
-			sleepTime = 0
 		}
 
 		messageUUID, noMsg, err := s.query(ctx, topic, out, logger)
