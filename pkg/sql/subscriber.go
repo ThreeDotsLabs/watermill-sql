@@ -275,6 +275,10 @@ func (s *Subscriber) query(
 		lastOffset = offset
 	}
 
+	if lastOffset == 0 {
+		return true, nil
+	}
+
 	ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(topic, lastOffset, s.config.ConsumerGroup)
 
 	logger.Trace("Executing ack message query", watermill.LogFields{
