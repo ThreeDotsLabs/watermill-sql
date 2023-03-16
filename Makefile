@@ -39,3 +39,6 @@ update_watermill:
 mycli:
 	@mycli -h 127.0.0.1 -u root -p secret
 
+pgcli:
+	@pgcli postgres://watermill:password@localhost:5432/watermill?sslmode=disable
+
