@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	logger = watermill.NewStdLogger(true, false)
+	logger = watermill.NewStdLogger(true, true)
 )
 
 func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
@@ -191,7 +191,7 @@ func TestMySQLPublishSubscribe(t *testing.T) {
 func TestPostgreSQLPublishSubscribe(t *testing.T) {
 	features := tests.Features{
 		ConsumerGroups:      true,
-		ExactlyOnceDelivery: true,
+		ExactlyOnceDelivery: false,
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}

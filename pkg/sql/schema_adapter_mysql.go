@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -73,7 +72,7 @@ func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offs
 	selectQuery := `
 		SELECT offset, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
 		WHERE 
-			offset > (` + nextOffsetQuery + `)
+			offset > (` + nextOffsetQuery + `) AND transaction_id < pg_snapshot_xmin(pg_current_snapshot())
 		ORDER BY 
 			offset ASC
 		LIMIT 1`
@@ -81,7 +80,7 @@ func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offs
 	return selectQuery, nextOffsetArgs
 }
 
-func (s DefaultMySQLSchema) UnmarshalMessage(row *sql.Row) (offset int, msg *message.Message, err error) {
+func (s DefaultMySQLSchema) UnmarshalMessage(row Scanner) (offset int, msg *message.Message, err error) {
 	return unmarshalDefaultMessage(row)
 }
 

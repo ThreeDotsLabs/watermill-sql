@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"database/sql"
 	"encoding/json"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -14,13 +13,13 @@ type SchemaAdapter interface {
 	// InsertQuery returns the SQL query and arguments that will insert the Watermill message into the SQL storage.
 	InsertQuery(topic string, msgs message.Messages) (string, []interface{}, error)
 
-	// SelectQuery returns the the SQL query and arguments
+	// SelectQuery returns the SQL query and arguments
 	// that returns the next unread message for a given consumer group.
 	SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{})
 
 	// UnmarshalMessage transforms the Row obtained SelectQuery a Watermill message.
 	// It also returns the offset of the last read message, for the purpose of acking.
-	UnmarshalMessage(row *sql.Row) (offset int, msg *message.Message, err error)
+	UnmarshalMessage(row Scanner) (offset int, msg *message.Message, err error)
 
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)
 	// that the appropriate tables exist to write messages to the given topic.
@@ -51,7 +50,7 @@ func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
 	return args, nil
 }
 
-func unmarshalDefaultMessage(row *sql.Row) (offset int, msg *message.Message, err error) {
+func unmarshalDefaultMessage(row Scanner) (offset int, msg *message.Message, err error) {
 	r := defaultSchemaRow{}
 	err = row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {

@@ -23,7 +23,6 @@ func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string)
 		CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
 		consumer_group VARCHAR(255) NOT NULL,
 		offset_acked BIGINT,
-		offset_consumed BIGINT NOT NULL,
 		PRIMARY KEY(consumer_group)
 	)`}
 }
@@ -32,13 +31,13 @@ func (a DefaultPostgreSQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup st
 	return `SELECT COALESCE(
 				(SELECT offset_acked
 				 FROM ` + a.MessagesOffsetsTable(topic) + `
-				 WHERE consumer_group=$1 FOR UPDATE
+				 WHERE consumer_group=$1
 				), 0)`,
 		[]interface{}{consumerGroup}
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, offset int, consumerGroup string) (string, []interface{}) {
-	ackQuery := `UPDATE ` + a.MessagesOffsetsTable(topic) + ` SET offset_acked = $1 WHERE consumer_group = $2`
+	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + `(offset_acked, consumer_group) VALUES ($1, $2) ON CONFLICT (consumer_group) DO UPDATE SET offset_acked = excluded.offset_acked`
 	return ackQuery, []interface{}{offset, consumerGroup}
 }
 

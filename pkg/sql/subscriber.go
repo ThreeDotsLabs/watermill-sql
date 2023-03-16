@@ -194,8 +194,7 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 			sleepTime = 0
 		}
 
-		messageUUID, noMsg, err := s.query(ctx, topic, out, logger)
-		logger := logger.With(watermill.LogFields{"message_uuid": messageUUID})
+		noMsg, err := s.query(ctx, topic, out, logger)
 		backoff := s.config.BackoffManager.HandleError(logger, noMsg, err)
 		if backoff != 0 {
 			if err != nil {
@@ -214,13 +213,13 @@ func (s *Subscriber) query(
 	topic string,
 	out chan *message.Message,
 	logger watermill.LoggerAdapter,
-) (messageUUID string, noMsg bool, err error) {
+) (noMsg bool, err error) {
 	txOptions := &sql.TxOptions{
 		Isolation: sql.LevelRepeatableRead,
 	}
 	tx, err := s.db.BeginTx(ctx, txOptions)
 	if err != nil {
-		return "", false, errors.Wrap(err, "could not begin tx for querying")
+		return false, errors.Wrap(err, "could not begin tx for querying")
 	}
 
 	defer func() {
@@ -246,62 +245,55 @@ func (s *Subscriber) query(
 		"query":      selectQuery,
 		"query_args": sqlArgsToLog(selectQueryArgs),
 	})
-	row := tx.QueryRowContext(ctx, selectQuery, selectQueryArgs...)
-
-	offset, msg, err := s.config.SchemaAdapter.UnmarshalMessage(row)
-	if errors.Cause(err) == sql.ErrNoRows {
-		return "", true, nil
-	} else if err != nil {
-		return "", false, errors.Wrap(err, "could not unmarshal message from query")
+	rows, err := tx.QueryContext(ctx, selectQuery, selectQueryArgs...)
+	if err != nil {
+		return false, errors.Wrap(err, "could not query message")
 	}
 
-	logger = logger.With(watermill.LogFields{
-		"msg_uuid": msg.UUID,
+	var lastOffset int
+
+	for rows.Next() {
+		offset, msg, err := s.config.SchemaAdapter.UnmarshalMessage(rows)
+		if errors.Cause(err) == sql.ErrNoRows {
+			return true, nil
+		} else if err != nil {
+			return false, errors.Wrap(err, "could not unmarshal message from query")
+		}
+
+		logger = logger.With(watermill.LogFields{
+			"msg_uuid": msg.UUID,
+		})
+		logger.Trace("Received message", nil)
+
+		msgCtx := setTxToContext(ctx, tx)
+
+		acked := s.sendMessage(msgCtx, msg, out, logger)
+		if !acked {
+			break
+		}
+
+		lastOffset = offset
+	}
+
+	ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(topic, lastOffset, s.config.ConsumerGroup)
+
+	logger.Trace("Executing ack message query", watermill.LogFields{
+		"query":      ackQuery,
+		"query_args": sqlArgsToLog(ackArgs),
 	})
-	logger.Trace("Received message", nil)
 
-	consumedQuery, consumedArgs := s.config.OffsetsAdapter.ConsumedMessageQuery(
-		topic,
-		offset,
-		s.config.ConsumerGroup,
-		s.consumerIdBytes,
-	)
-	if consumedQuery != "" {
-		logger.Trace("Executing query to confirm message consumed", watermill.LogFields{
-			"query":      consumedQuery,
-			"query_args": sqlArgsToLog(consumedArgs),
-		})
-
-		_, err := tx.ExecContext(ctx, consumedQuery, consumedArgs...)
-		if err != nil {
-			return msg.UUID, false, errors.Wrap(err, "cannot send consumed query")
-		}
+	result, err := tx.ExecContext(ctx, ackQuery, ackArgs...)
+	if err != nil {
+		return false, errors.Wrap(err, "could not get args for acking the message")
 	}
 
-	msgCtx := setTxToContext(ctx, tx)
+	rowsAffected, _ := result.RowsAffected()
 
-	acked := s.sendMessage(msgCtx, msg, out, logger)
-	if acked {
-		ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(topic, offset, s.config.ConsumerGroup)
+	logger.Trace("Executed ack message query", watermill.LogFields{
+		"rows_affected": rowsAffected,
+	})
 
-		logger.Trace("Executing ack message query", watermill.LogFields{
-			"query":      ackQuery,
-			"query_args": sqlArgsToLog(ackArgs),
-		})
-
-		result, err := tx.ExecContext(ctx, ackQuery, ackArgs...)
-		if err != nil {
-			return msg.UUID, false, errors.Wrap(err, "could not get args for acking the message")
-		}
-
-		rowsAffected, _ := result.RowsAffected()
-
-		logger.Trace("Executed ack message query", watermill.LogFields{
-			"rows_affected": rowsAffected,
-		})
-	}
-
-	return msg.UUID, false, nil
+	return false, nil
 }
 
 // sendMessages sends messages on the output channel.
