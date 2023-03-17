@@ -31,7 +31,7 @@ func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string)
 func (a DefaultPostgreSQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) (string, []interface{}) {
 	return `SELECT 
     			coalesce(MAX(offset_acked),0) AS offset_acked, 
-    			coalesce(MAX(last_processed_transaction_id),'0'::xid8) AS last_processed_transaction_id 
+    			coalesce(MAX(last_processed_transaction_id::text), '0')::xid8 AS last_processed_transaction_id 
 			FROM ` + a.MessagesOffsetsTable(topic) + ` 
 			WHERE consumer_group=$1`,
 		[]interface{}{consumerGroup}

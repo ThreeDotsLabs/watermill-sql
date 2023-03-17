@@ -13,7 +13,7 @@ services:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
 
   postgres:
-    image: postgres:15
+    image: postgres:14.4
     restart: unless-stopped
     command: postgres -c 'max_connections=500'
     ports:
