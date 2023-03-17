@@ -2,7 +2,7 @@ package sql
 
 type OffsetsAdapter interface {
 	// AckMessageQuery the SQL query and arguments that will mark a message as read for a given consumer group.
-	AckMessageQuery(topic string, offset int, consumerGroup string) (string, []interface{})
+	AckMessageQuery(topic string, offset int64, transactionID int64, consumerGroup string) (string, []interface{})
 
 	// ConsumedMessageQuery will return the SQL query and arguments which be executed after consuming message,
 	// but before ack.

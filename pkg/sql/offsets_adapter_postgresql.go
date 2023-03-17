@@ -23,22 +23,35 @@ func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string)
 		CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
 		consumer_group VARCHAR(255) NOT NULL,
 		offset_acked BIGINT,
+		last_processed_transaction_id xid8 NOT NULL,
 		PRIMARY KEY(consumer_group)
 	)`}
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) (string, []interface{}) {
-	return `SELECT COALESCE(
-				(SELECT offset_acked
-				 FROM ` + a.MessagesOffsetsTable(topic) + `
-				 WHERE consumer_group=$1
-				), 0)`,
+	return `SELECT 
+    			coalesce(MAX(offset_acked),0) AS offset_acked, 
+    			coalesce(MAX(last_processed_transaction_id),'0'::xid8) AS last_processed_transaction_id 
+			FROM ` + a.MessagesOffsetsTable(topic) + ` 
+			WHERE consumer_group=$1`,
 		[]interface{}{consumerGroup}
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, offset int, consumerGroup string) (string, []interface{}) {
-	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + `(offset_acked, consumer_group) VALUES ($1, $2) ON CONFLICT (consumer_group) DO UPDATE SET offset_acked = excluded.offset_acked`
-	return ackQuery, []interface{}{offset, consumerGroup}
+func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(
+	topic string,
+	offset int64,
+	transactionID int64,
+	consumerGroup string,
+) (string, []interface{}) {
+	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + `(offset_acked, last_processed_transaction_id, consumer_group) 
+	VALUES 
+		($1, $2, $3) 
+	ON CONFLICT 
+		(consumer_group) 
+	DO UPDATE SET 
+		offset_acked = excluded.offset_acked,
+		last_processed_transaction_id = excluded.last_processed_transaction_id`
+	return ackQuery, []interface{}{offset, transactionID, consumerGroup}
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) MessagesOffsetsTable(topic string) string {

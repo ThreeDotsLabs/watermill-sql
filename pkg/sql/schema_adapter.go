@@ -19,7 +19,7 @@ type SchemaAdapter interface {
 
 	// UnmarshalMessage transforms the Row obtained SelectQuery a Watermill message.
 	// It also returns the offset of the last read message, for the purpose of acking.
-	UnmarshalMessage(row Scanner) (offset int, msg *message.Message, err error)
+	UnmarshalMessage(row Scanner) (offset int64, transactionID int64, msg *message.Message, err error)
 
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)
 	// that the appropriate tables exist to write messages to the given topic.
@@ -30,10 +30,11 @@ type SchemaAdapter interface {
 type DefaultSchema = DefaultMySQLSchema
 
 type defaultSchemaRow struct {
-	Offset   int64
-	UUID     []byte
-	Payload  []byte
-	Metadata []byte
+	Offset        int64
+	TransactionID int64
+	UUID          []byte
+	Payload       []byte
+	Metadata      []byte
 }
 
 func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
@@ -50,11 +51,11 @@ func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
 	return args, nil
 }
 
-func unmarshalDefaultMessage(row Scanner) (offset int, msg *message.Message, err error) {
+func unmarshalDefaultMessage(row Scanner) (offset int64, transactionID int64, msg *message.Message, err error) {
 	r := defaultSchemaRow{}
-	err = row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
+	err = row.Scan(&r.Offset, &r.TransactionID, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "could not scan message row")
+		return 0, 0, nil, errors.Wrap(err, "could not scan message row")
 	}
 
 	msg = message.NewMessage(string(r.UUID), r.Payload)
@@ -62,9 +63,9 @@ func unmarshalDefaultMessage(row Scanner) (offset int, msg *message.Message, err
 	if r.Metadata != nil {
 		err = json.Unmarshal(r.Metadata, &msg.Metadata)
 		if err != nil {
-			return 0, nil, errors.Wrap(err, "could not unmarshal metadata as JSON")
+			return 0, 0, nil, errors.Wrap(err, "could not unmarshal metadata as JSON")
 		}
 	}
 
-	return int(r.Offset), msg, nil
+	return r.Offset, r.TransactionID, msg, nil
 }

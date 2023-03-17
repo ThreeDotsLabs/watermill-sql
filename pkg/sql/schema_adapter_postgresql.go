@@ -58,9 +58,24 @@ func defaultInsertMarkers(count int) string {
 func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
 	nextOffsetQuery, nextOffsetArgs := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
 	selectQuery := `
-		SELECT "offset", uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
-		WHERE
-			"offset" > (` + nextOffsetQuery + `)
+		WITH last_processed AS (
+			` + nextOffsetQuery + `
+		)
+
+		SELECT "offset", transaction_id, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
+
+		WHERE 
+		(
+			(
+				transaction_id = (SELECT last_processed_transaction_id FROM last_processed) 
+				AND 
+				"offset" > (SELECT offset_acked FROM last_processed)
+			)
+			OR
+			(transaction_id > (SELECT last_processed_transaction_id FROM last_processed))
+		)
+		AND 
+			transaction_id < pg_snapshot_xmin(pg_current_snapshot())
 		ORDER BY
 			"offset" ASC
 		LIMIT 100`
@@ -68,7 +83,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string,
 	return selectQuery, nextOffsetArgs
 }
 
-func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (offset int, msg *message.Message, err error) {
+func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (offset int64, transactionID int64, msg *message.Message, err error) {
 	return unmarshalDefaultMessage(row)
 }
 

@@ -250,10 +250,11 @@ func (s *Subscriber) query(
 		return false, errors.Wrap(err, "could not query message")
 	}
 
-	var lastOffset int
+	var lastOffset int64
+	var lastTransactionID int64
 
 	for rows.Next() {
-		offset, msg, err := s.config.SchemaAdapter.UnmarshalMessage(rows)
+		offset, transactionID, msg, err := s.config.SchemaAdapter.UnmarshalMessage(rows)
 		if errors.Cause(err) == sql.ErrNoRows {
 			return true, nil
 		} else if err != nil {
@@ -273,13 +274,19 @@ func (s *Subscriber) query(
 		}
 
 		lastOffset = offset
+		lastTransactionID = transactionID
 	}
 
 	if lastOffset == 0 {
 		return true, nil
 	}
 
-	ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(topic, lastOffset, s.config.ConsumerGroup)
+	ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(
+		topic,
+		lastOffset,
+		lastTransactionID,
+		s.config.ConsumerGroup,
+	)
 
 	logger.Trace("Executing ack message query", watermill.LogFields{
 		"query":      ackQuery,

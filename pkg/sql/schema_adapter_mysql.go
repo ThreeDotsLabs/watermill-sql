@@ -80,7 +80,7 @@ func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offs
 	return selectQuery, nextOffsetArgs
 }
 
-func (s DefaultMySQLSchema) UnmarshalMessage(row Scanner) (offset int, msg *message.Message, err error) {
+func (s DefaultMySQLSchema) UnmarshalMessage(row Scanner) (offset int64, transactionID int64, msg *message.Message, err error) {
 	return unmarshalDefaultMessage(row)
 }
 

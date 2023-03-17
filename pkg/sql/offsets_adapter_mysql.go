@@ -28,7 +28,12 @@ func (a DefaultMySQLOffsetsAdapter) SchemaInitializingQueries(topic string) []st
 	)`}
 }
 
-func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(topic string, offset int, consumerGroup string) (string, []interface{}) {
+func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(
+	topic string,
+	offset int64,
+	transactionID int64,
+	consumerGroup string,
+) (string, []interface{}) {
 	ackQuery := `UPDATE ` + a.MessagesOffsetsTable(topic) + ` SET offset_acked = ? WHERE consumer_group = ?`
 	return ackQuery, []interface{}{offset, consumerGroup}
 }
