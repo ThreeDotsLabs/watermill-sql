@@ -74,7 +74,7 @@ func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offs
 		WHERE 
 			offset > (` + nextOffsetQuery + `) AND transaction_id < pg_snapshot_xmin(pg_current_snapshot())
 		ORDER BY 
-			offset ASC
+			transaction_id ASC, offset ASC
 		LIMIT 1`
 
 	return selectQuery, nextOffsetArgs
