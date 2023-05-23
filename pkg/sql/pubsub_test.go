@@ -13,7 +13,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	driver "github.com/go-sql-driver/mysql"
-	"github.com/jackc/pgx/v4"
+	pgx "github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/stdlib"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
