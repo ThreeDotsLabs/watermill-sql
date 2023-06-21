@@ -3,6 +3,7 @@ package sql
 import (
 	"context"
 	"database/sql"
+	stdErrors "errors"
 	"sync"
 	"time"
 
@@ -253,8 +254,7 @@ func (s *Subscriber) query(
 
 	defer func() {
 		if rowsCloseErr := rows.Close(); rowsCloseErr != nil {
-			// todo: join?
-			logger.Error("could not close rows", rowsCloseErr, nil)
+			err = stdErrors.Join(err, errors.Wrap(err, "could not close rows"))
 		}
 	}()
 
