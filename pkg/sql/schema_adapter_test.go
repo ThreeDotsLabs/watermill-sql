@@ -126,14 +126,15 @@ type testPostgreSQLSchema struct {
 }
 
 func (s *testPostgreSQLSchema) SchemaInitializingQueries(topic string) []string {
-	createMessagesTable := strings.Join([]string{
-		"CREATE TABLE IF NOT EXISTS " + s.MessagesTable(topic) + " (",
-		`"offset" SERIAL,`,
-		`"uuid" VARCHAR(255) NOT NULL,`,
-		`"payload" bytea DEFAULT NULL,`,
-		`"metadata" JSON DEFAULT NULL`,
-		`);`,
-	}, "\n")
+	createMessagesTable := `
+		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
+		"offset" SERIAL,
+		"uuid" VARCHAR(255) NOT NULL,
+		"payload" bytea DEFAULT NULL,
+		"metadata" JSON DEFAULT NULL,
+		"transaction_id" xid8 NOT NULL
+	);
+	`
 
 	return []string{createMessagesTable}
 }

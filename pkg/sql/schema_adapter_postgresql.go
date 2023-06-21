@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -15,22 +14,23 @@ type DefaultPostgreSQLSchema struct {
 }
 
 func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []string {
-	createMessagesTable := strings.Join([]string{
-		`CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (`,
-		`"offset" SERIAL,`,
-		`"uuid" VARCHAR(36) NOT NULL,`,
-		`"created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,`,
-		`"payload" JSON DEFAULT NULL,`,
-		`"metadata" JSON DEFAULT NULL`,
-		`);`,
-	}, "\n")
+	createMessagesTable := ` 
+		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
+			"offset" SERIAL,
+			"uuid" VARCHAR(36) NOT NULL,
+			"created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			"payload" JSON DEFAULT NULL,
+			"metadata" JSON DEFAULT NULL,
+			"transaction_id" xid8 NOT NULL
+		);
+	`
 
 	return []string{createMessagesTable}
 }
 
 func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages) (string, []interface{}, error) {
 	insertQuery := fmt.Sprintf(
-		`INSERT INTO %s (uuid, payload, metadata) VALUES %s`,
+		`INSERT INTO %s (uuid, payload, metadata, transaction_id) VALUES %s`,
 		s.MessagesTable(topic),
 		defaultInsertMarkers(len(msgs)),
 	)
@@ -48,7 +48,7 @@ func defaultInsertMarkers(count int) string {
 
 	index := 1
 	for i := 0; i < count; i++ {
-		result.WriteString(fmt.Sprintf("($%d,$%d,$%d),", index, index+1, index+2))
+		result.WriteString(fmt.Sprintf("($%d,$%d,$%d,pg_current_xact_id()),", index, index+1, index+2))
 		index += 3
 	}
 
@@ -56,19 +56,37 @@ func defaultInsertMarkers(count int) string {
 }
 
 func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
+	// Query inspired by https://event-driven.io/en/ordering_in_postgres_outbox/
+
 	nextOffsetQuery, nextOffsetArgs := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
 	selectQuery := `
-		SELECT "offset", uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
-		WHERE
-			"offset" > (` + nextOffsetQuery + `)
+		WITH last_processed AS (
+			` + nextOffsetQuery + `
+		)
+
+		SELECT "offset", transaction_id, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
+
+		WHERE 
+		(
+			(
+				transaction_id = (SELECT last_processed_transaction_id FROM last_processed) 
+				AND 
+				"offset" > (SELECT offset_acked FROM last_processed)
+			)
+			OR
+			(transaction_id > (SELECT last_processed_transaction_id FROM last_processed))
+		)
+		AND 
+			transaction_id < pg_snapshot_xmin(pg_current_snapshot())
 		ORDER BY
+			transaction_id ASC,
 			"offset" ASC
-		LIMIT 1`
+		LIMIT 100` // todo: dynamic limit + test for different values
 
 	return selectQuery, nextOffsetArgs
 }
 
-func (s DefaultPostgreSQLSchema) UnmarshalMessage(row *sql.Row) (offset int, msg *message.Message, err error) {
+func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (offset int64, transactionID int64, msg *message.Message, err error) {
 	return unmarshalDefaultMessage(row)
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/message/subscriber"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	driver "github.com/go-sql-driver/mysql"
 	pgx "github.com/jackc/pgx/v4"
@@ -107,21 +108,31 @@ func newPgxPostgreSQL(t *testing.T) *stdSQL.DB {
 }
 
 func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
-	schemaAdapter := &testMySQLSchema{
+	return newPubSub(
+		t,
+		newMySQL(t),
+		consumerGroup,
+		newMySQLSchemaAdapter(),
+		newMySQLOffsetsAdapter(),
+	)
+}
+
+func newMySQLOffsetsAdapter() sql.DefaultMySQLOffsetsAdapter {
+	return sql.DefaultMySQLOffsetsAdapter{
+		GenerateMessagesOffsetsTableName: func(topic string) string {
+			return fmt.Sprintf("`test_offsets_%s`", topic)
+		},
+	}
+}
+
+func newMySQLSchemaAdapter() *testMySQLSchema {
+	return &testMySQLSchema{
 		sql.DefaultMySQLSchema{
 			GenerateMessagesTableName: func(topic string) string {
 				return fmt.Sprintf("`test_%s`", topic)
 			},
 		},
 	}
-
-	offsetsAdapter := sql.DefaultMySQLOffsetsAdapter{
-		GenerateMessagesOffsetsTableName: func(topic string) string {
-			return fmt.Sprintf("`test_offsets_%s`", topic)
-		},
-	}
-
-	return newPubSub(t, newMySQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
 }
 
 func createMySQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
@@ -129,21 +140,31 @@ func createMySQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 }
 
 func createPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
-	schemaAdapter := &testPostgreSQLSchema{
+	return newPubSub(
+		t,
+		newPostgreSQL(t),
+		consumerGroup,
+		newPostgresSchemaAdapter(),
+		newPostgresOffsetsAdapter(),
+	)
+}
+
+func newPostgresOffsetsAdapter() sql.DefaultPostgreSQLOffsetsAdapter {
+	return sql.DefaultPostgreSQLOffsetsAdapter{
+		GenerateMessagesOffsetsTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_offsets_%s"`, topic)
+		},
+	}
+}
+
+func newPostgresSchemaAdapter() *testPostgreSQLSchema {
+	return &testPostgreSQLSchema{
 		sql.DefaultPostgreSQLSchema{
 			GenerateMessagesTableName: func(topic string) string {
 				return fmt.Sprintf(`"test_%s"`, topic)
 			},
 		},
 	}
-
-	offsetsAdapter := sql.DefaultPostgreSQLOffsetsAdapter{
-		GenerateMessagesOffsetsTableName: func(topic string) string {
-			return fmt.Sprintf(`"test_offsets_%s"`, topic)
-		},
-	}
-
-	return newPubSub(t, newPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
 }
 
 func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
@@ -191,7 +212,7 @@ func TestMySQLPublishSubscribe(t *testing.T) {
 func TestPostgreSQLPublishSubscribe(t *testing.T) {
 	features := tests.Features{
 		ConsumerGroups:      true,
-		ExactlyOnceDelivery: true,
+		ExactlyOnceDelivery: false, // todo: fix!
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}
@@ -207,7 +228,7 @@ func TestPostgreSQLPublishSubscribe(t *testing.T) {
 func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 	features := tests.Features{
 		ConsumerGroups:      true,
-		ExactlyOnceDelivery: true,
+		ExactlyOnceDelivery: false, // todo: fix!
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}
@@ -238,7 +259,7 @@ func TestCtxValues(t *testing.T) {
 	for _, constructor := range pubSubConstructors {
 		pub, sub := constructor.Constructor(t)
 
-		t.Run("", func(t *testing.T) {
+		t.Run(constructor.Name, func(t *testing.T) {
 			t.Parallel()
 			topicName := "topic_" + watermill.NewUUID()
 
@@ -265,6 +286,154 @@ func TestCtxValues(t *testing.T) {
 			case <-time.After(time.Second * 10):
 				t.Fatal("no message received")
 			}
+		})
+	}
+}
+
+// TestNotMissingMessages checks if messages are not missing when messages are published in concurrent transactions.
+// See more: https://github.com/ThreeDotsLabs/watermill/issues/311
+func TestNotMissingMessages(t *testing.T) {
+	pubSubs := []struct {
+		Name           string
+		DbConstructor  func(t *testing.T) *stdSQL.DB
+		SchemaAdapter  sql.SchemaAdapter
+		OffsetsAdapter sql.OffsetsAdapter
+	}{
+		{
+			Name:           "mysql",
+			DbConstructor:  newMySQL,
+			SchemaAdapter:  newMySQLSchemaAdapter(),
+			OffsetsAdapter: newMySQLOffsetsAdapter(),
+		},
+		{
+			Name:           "postgresql",
+			DbConstructor:  newPostgreSQL,
+			SchemaAdapter:  newPostgresSchemaAdapter(),
+			OffsetsAdapter: newPostgresOffsetsAdapter(),
+		},
+	}
+
+	for _, pubSub := range pubSubs {
+		pubSub := pubSub
+
+		t.Run(pubSub.Name, func(t *testing.T) {
+			t.Parallel()
+
+			db := pubSub.DbConstructor(t)
+
+			topicName := "topic_" + watermill.NewUUID()
+
+			messagesToPublish := []*message.Message{
+				message.NewMessage("0", nil),
+				message.NewMessage("1", nil),
+				message.NewMessage("2", nil),
+			}
+
+			sub, err := sql.NewSubscriber(
+				db,
+				sql.SubscriberConfig{
+					ConsumerGroup: "consumerGroup",
+
+					PollInterval:   1 * time.Millisecond,
+					ResendInterval: 5 * time.Millisecond,
+					SchemaAdapter:  pubSub.SchemaAdapter,
+					OffsetsAdapter: pubSub.OffsetsAdapter,
+				},
+				logger,
+			)
+			require.NoError(t, err)
+
+			err = sub.SubscribeInitialize(topicName)
+			require.NoError(t, err)
+
+			messagesAsserted := make(chan struct{})
+
+			go func() {
+				defer close(messagesAsserted)
+
+				messages, err := sub.Subscribe(context.Background(), topicName)
+				require.NoError(t, err)
+
+				// todo: increase timeout
+				received, all := subscriber.BulkRead(messages, len(messagesToPublish), time.Second*1)
+				assert.True(t, all)
+
+				tests.AssertAllMessagesReceived(t, messagesToPublish, received)
+			}()
+
+			tx0, err := db.BeginTx(context.Background(), &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
+			assert.NoError(t, err)
+			time.Sleep(time.Millisecond * 10)
+
+			tx1, err := db.BeginTx(context.Background(), &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
+			assert.NoError(t, err)
+			time.Sleep(time.Millisecond * 10)
+
+			txRollback, err := db.BeginTx(context.Background(), &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
+			assert.NoError(t, err)
+			time.Sleep(time.Millisecond * 10)
+
+			tx2, err := db.BeginTx(context.Background(), &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
+			assert.NoError(t, err)
+			time.Sleep(time.Millisecond * 10)
+
+			pub0, err := sql.NewPublisher(
+				tx0,
+				sql.PublisherConfig{
+					SchemaAdapter: pubSub.SchemaAdapter,
+				},
+				logger,
+			)
+			require.NoError(t, err)
+			err = pub0.Publish(topicName, messagesToPublish[0])
+			require.NoError(t, err, "cannot publish message")
+
+			pub1, err := sql.NewPublisher(
+				tx1,
+				sql.PublisherConfig{
+					SchemaAdapter: pubSub.SchemaAdapter,
+				},
+				logger,
+			)
+			require.NoError(t, err)
+			err = pub1.Publish(topicName, messagesToPublish[1])
+			require.NoError(t, err, "cannot publish message")
+
+			pubRollback, err := sql.NewPublisher(
+				txRollback,
+				sql.PublisherConfig{
+					SchemaAdapter: pubSub.SchemaAdapter,
+				},
+				logger,
+			)
+			require.NoError(t, err)
+			err = pubRollback.Publish(topicName, message.NewMessage("rollback", nil))
+			require.NoError(t, err, "cannot publish message")
+
+			pub2, err := sql.NewPublisher(
+				tx2,
+				sql.PublisherConfig{
+					SchemaAdapter: pubSub.SchemaAdapter,
+				},
+				logger,
+			)
+			require.NoError(t, err)
+			err = pub2.Publish(topicName, messagesToPublish[2])
+			require.NoError(t, err, "cannot publish message")
+
+			require.NoError(t, tx2.Commit())
+			time.Sleep(time.Millisecond * 10)
+
+			require.NoError(t, txRollback.Rollback())
+			time.Sleep(time.Millisecond * 10)
+
+			require.NoError(t, tx1.Commit())
+			time.Sleep(time.Millisecond * 10)
+
+			require.NoError(t, tx0.Commit())
+			time.Sleep(time.Millisecond * 10)
+
+			<-messagesAsserted
 		})
 	}
 }

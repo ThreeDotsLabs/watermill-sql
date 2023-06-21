@@ -36,5 +36,7 @@ update_watermill:
 	go mod edit -fmt
 
 mycli:
-	@mycli -h 127.0.0.1 -u root -p secret
+	@mycli -h 127.0.0.1 -u root watermill
 
+pgcli:
+	@pgcli postgres://watermill:password@localhost:5432/watermill?sslmode=disable

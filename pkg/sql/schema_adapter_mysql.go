@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -71,17 +70,17 @@ func (s DefaultMySQLSchema) InsertQuery(topic string, msgs message.Messages) (st
 func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
 	nextOffsetQuery, nextOffsetArgs := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
 	selectQuery := `
-		SELECT offset, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
+		SELECT offset, 0, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
 		WHERE 
 			offset > (` + nextOffsetQuery + `)
 		ORDER BY 
 			offset ASC
-		LIMIT 1`
+		LIMIT 100` // todo: dynamic limit + test for 1
 
 	return selectQuery, nextOffsetArgs
 }
 
-func (s DefaultMySQLSchema) UnmarshalMessage(row *sql.Row) (offset int, msg *message.Message, err error) {
+func (s DefaultMySQLSchema) UnmarshalMessage(row Scanner) (offset int64, transactionID int64, msg *message.Message, err error) {
 	return unmarshalDefaultMessage(row)
 }
 

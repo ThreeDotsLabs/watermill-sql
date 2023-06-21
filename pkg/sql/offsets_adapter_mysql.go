@@ -28,9 +28,15 @@ func (a DefaultMySQLOffsetsAdapter) SchemaInitializingQueries(topic string) []st
 	)`}
 }
 
-func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(topic string, offset int, consumerGroup string) (string, []interface{}) {
-	ackQuery := `UPDATE ` + a.MessagesOffsetsTable(topic) + ` SET offset_acked = ? WHERE consumer_group = ?`
-	return ackQuery, []interface{}{offset, consumerGroup}
+func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(
+	topic string,
+	offset int64,
+	transactionID int64,
+	consumerGroup string,
+) (string, []interface{}) {
+	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (offset_consumed, offset_acked, consumer_group)
+		VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE offset_consumed=VALUES(offset_consumed), offset_acked=VALUES(offset_acked)`
+	return ackQuery, []interface{}{offset, offset, consumerGroup}
 }
 
 func (a DefaultMySQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) (string, []interface{}) {
