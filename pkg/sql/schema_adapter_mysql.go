@@ -38,6 +38,14 @@ import (
 type DefaultMySQLSchema struct {
 	// GenerateMessagesTableName may be used to override how the messages table name is generated.
 	GenerateMessagesTableName func(topic string) string
+
+	// SubscribeBatchSize is the number of messages to be queried at once.
+	//
+	// Higher value, increases a chance of message re-delivery in case of crash or networking issues.
+	// 1 is the safest value, but it may have a negative impact on performance when consuming a lot of messages.
+	//
+	// Default value is 100.
+	SubscribeBatchSize int
 }
 
 func (s DefaultMySQLSchema) SchemaInitializingQueries(topic string) []string {
@@ -69,6 +77,14 @@ func (s DefaultMySQLSchema) InsertQuery(topic string, msgs message.Messages) (st
 	return insertQuery, args, nil
 }
 
+func (s DefaultMySQLSchema) batchSize() int {
+	if s.SubscribeBatchSize == 0 {
+		return 100
+	}
+
+	return s.SubscribeBatchSize
+}
+
 func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
 	nextOffsetQuery, nextOffsetArgs := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
 	selectQuery := `
@@ -77,7 +93,7 @@ func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offs
 			offset > (` + nextOffsetQuery + `)
 		ORDER BY 
 			offset ASC
-		LIMIT 100` // todo: dynamic limit + test for 1
+		LIMIT ` + fmt.Sprintf("%d", s.batchSize())
 
 	return selectQuery, nextOffsetArgs
 }

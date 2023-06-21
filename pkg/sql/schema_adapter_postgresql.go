@@ -13,6 +13,14 @@ import (
 type DefaultPostgreSQLSchema struct {
 	// GenerateMessagesTableName may be used to override how the messages table name is generated.
 	GenerateMessagesTableName func(topic string) string
+
+	// SubscribeBatchSize is the number of messages to be queried at once.
+	//
+	// Higher value, increases a chance of message re-delivery in case of crash or networking issues.
+	// 1 is the safest value, but it may have a negative impact on performance when consuming a lot of messages.
+	//
+	// Default value is 100.
+	SubscribeBatchSize int
 }
 
 func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []string {
@@ -57,6 +65,14 @@ func defaultInsertMarkers(count int) string {
 	return strings.TrimRight(result.String(), ",")
 }
 
+func (s DefaultPostgreSQLSchema) batchSize() int {
+	if s.SubscribeBatchSize == 0 {
+		return 100
+	}
+
+	return s.SubscribeBatchSize
+}
+
 func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
 	// Query inspired by https://event-driven.io/en/ordering_in_postgres_outbox/
 
@@ -83,7 +99,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string,
 		ORDER BY
 			transaction_id ASC,
 			"offset" ASC
-		LIMIT 100` // todo: dynamic limit + test for different values
+		LIMIT ` + fmt.Sprintf("%d", s.batchSize())
 
 	return selectQuery, nextOffsetArgs
 }

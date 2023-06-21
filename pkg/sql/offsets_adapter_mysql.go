@@ -50,9 +50,9 @@ func (a DefaultMySQLOffsetsAdapter) MessagesOffsetsTable(topic string) string {
 	return fmt.Sprintf("`watermill_offsets_%s`", topic)
 }
 
-func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(topic string, offset int64, consumerGroup string, consumerULID []byte) (string, []interface{}) {
+func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(topic string, row Row, consumerGroup string, consumerULID []byte) (string, []interface{}) {
 	// offset_consumed is not queried anywhere, it's used only to detect race conditions with NextOffsetQuery.
 	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (offset_consumed, consumer_group)
 		VALUES (?, ?) ON DUPLICATE KEY UPDATE offset_consumed=VALUES(offset_consumed)`
-	return ackQuery, []interface{}{offset, consumerGroup}
+	return ackQuery, []interface{}{row.Offset, consumerGroup}
 }

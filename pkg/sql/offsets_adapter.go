@@ -8,7 +8,7 @@ type OffsetsAdapter interface {
 	// but before ack.
 	//
 	// ConsumedMessageQuery is optional, and will be not executed if query is empty.
-	ConsumedMessageQuery(topic string, offset int64, consumerGroup string, consumerULID []byte) (string, []interface{})
+	ConsumedMessageQuery(topic string, row Row, consumerGroup string, consumerULID []byte) (string, []interface{})
 
 	// NextOffsetQuery returns the SQL query and arguments which should return offset of next message to consume.
 	NextOffsetQuery(topic, consumerGroup string) (string, []interface{})

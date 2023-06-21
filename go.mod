@@ -1,6 +1,4 @@
-module github.com/ThreeDotsLabs/watermill-sql
-
-// todo: bump to v2
+module github.com/ThreeDotsLabs/watermill-sql/v2
 
 go 1.20
 

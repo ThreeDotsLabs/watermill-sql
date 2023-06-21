@@ -191,7 +191,6 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 			return
 
 		case <-time.After(sleepTime): // Wait if needed
-			sleepTime = 0
 		}
 
 		noMsg, err := s.query(ctx, topic, out, logger)
@@ -279,7 +278,7 @@ func (s *Subscriber) query(
 		// todo: does it make sense for bulk? add option to disable?
 		consumedQuery, consumedArgs := s.config.OffsetsAdapter.ConsumedMessageQuery(
 			topic,
-			row.Offset,
+			row,
 			s.config.ConsumerGroup,
 			s.consumerIdBytes,
 		)
