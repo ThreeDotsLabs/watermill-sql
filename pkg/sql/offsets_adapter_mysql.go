@@ -28,15 +28,10 @@ func (a DefaultMySQLOffsetsAdapter) SchemaInitializingQueries(topic string) []st
 	)`}
 }
 
-func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(
-	topic string,
-	offset int64,
-	transactionID int64,
-	consumerGroup string,
-) (string, []interface{}) {
+func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(topic string, row Row, consumerGroup string) (string, []interface{}) {
 	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (offset_consumed, offset_acked, consumer_group)
 		VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE offset_consumed=VALUES(offset_consumed), offset_acked=VALUES(offset_acked)`
-	return ackQuery, []interface{}{offset, offset, consumerGroup}
+	return ackQuery, []interface{}{row.Offset, row.Offset, consumerGroup}
 }
 
 func (a DefaultMySQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) (string, []interface{}) {
@@ -55,12 +50,7 @@ func (a DefaultMySQLOffsetsAdapter) MessagesOffsetsTable(topic string) string {
 	return fmt.Sprintf("`watermill_offsets_%s`", topic)
 }
 
-func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(
-	topic string,
-	offset int,
-	consumerGroup string,
-	consumerULID []byte,
-) (string, []interface{}) {
+func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(topic string, offset int64, consumerGroup string, consumerULID []byte) (string, []interface{}) {
 	// offset_consumed is not queried anywhere, it's used only to detect race conditions with NextOffsetQuery.
 	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (offset_consumed, consumer_group)
 		VALUES (?, ?) ON DUPLICATE KEY UPDATE offset_consumed=VALUES(offset_consumed)`

@@ -1,10 +1,12 @@
 package sql
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/pkg/errors"
 )
 
 // DefaultPostgreSQLSchema is a default implementation of SchemaAdapter based on PostgreSQL.
@@ -86,8 +88,30 @@ func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string,
 	return selectQuery, nextOffsetArgs
 }
 
-func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (offset int64, transactionID int64, msg *message.Message, err error) {
-	return unmarshalDefaultMessage(row)
+func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
+	r := Row{}
+	var transactionID int64
+
+	err := row.Scan(&r.Offset, &transactionID, &r.UUID, &r.Payload, &r.Metadata)
+	if err != nil {
+		return Row{}, errors.Wrap(err, "could not scan message row")
+	}
+
+	msg := message.NewMessage(string(r.UUID), r.Payload)
+
+	if r.Metadata != nil {
+		err = json.Unmarshal(r.Metadata, &msg.Metadata)
+		if err != nil {
+			return Row{}, errors.Wrap(err, "could not unmarshal metadata as JSON")
+		}
+	}
+
+	r.Msg = msg
+	r.ExtraData = map[string]any{
+		"transaction_id": transactionID,
+	}
+
+	return r, nil
 }
 
 func (s DefaultPostgreSQLSchema) MessagesTable(topic string) string {

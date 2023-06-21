@@ -32,7 +32,7 @@ type SubscriberConfig struct {
 	// Must be non-negative. Defaults to 1s.
 	RetryInterval time.Duration
 
-	// BackoffManager defines how how much to backoff when receiving errors.
+	// BackoffManager defines how much to backoff when receiving errors.
 	BackoffManager BackoffManager
 
 	// SchemaAdapter provides the schema-dependent queries and arguments for them, based on topic/message etc.
@@ -260,36 +260,26 @@ func (s *Subscriber) query(
 	}()
 
 	var lastOffset int64
-	var lastTransactionID int64
+	var lastRow Row
 
-	type messageRow struct {
-		offset        int64
-		transactionID int64
-		msg           *message.Message
-	}
-
-	messageRows := make([]messageRow, 0)
+	messageRows := make([]Row, 0)
 
 	for rows.Next() {
-		offset, transactionID, msg, err := s.config.SchemaAdapter.UnmarshalMessage(rows)
+		row, err := s.config.SchemaAdapter.UnmarshalMessage(rows)
 		if errors.Cause(err) == sql.ErrNoRows {
 			return true, nil
 		} else if err != nil {
 			return false, errors.Wrap(err, "could not unmarshal message from query")
 		}
 
-		messageRows = append(messageRows, messageRow{
-			offset:        offset,
-			transactionID: transactionID,
-			msg:           msg,
-		})
+		messageRows = append(messageRows, row)
 	}
 
 	for _, row := range messageRows {
 		// todo: does it make sense for bulk? add option to disable?
 		consumedQuery, consumedArgs := s.config.OffsetsAdapter.ConsumedMessageQuery(
 			topic,
-			int(row.offset), // todo: avoid casting?
+			row.Offset,
 			s.config.ConsumerGroup,
 			s.consumerIdBytes,
 		)
@@ -299,7 +289,6 @@ func (s *Subscriber) query(
 				"query_args": sqlArgsToLog(consumedArgs),
 			})
 
-			// todo: should be part of tx?
 			_, err := tx.ExecContext(ctx, consumedQuery, consumedArgs...)
 
 			// todo: move after?
@@ -313,19 +302,19 @@ func (s *Subscriber) query(
 		}
 
 		logger = logger.With(watermill.LogFields{
-			"msg_uuid": row.msg.UUID,
+			"msg_uuid": row.Msg.UUID,
 		})
 		logger.Trace("Received message", nil)
 
 		msgCtx := setTxToContext(ctx, tx)
 
-		acked := s.sendMessage(msgCtx, row.msg, out, logger)
+		acked := s.sendMessage(msgCtx, row.Msg, out, logger)
 		if !acked {
 			break
 		}
 
-		lastOffset = row.offset
-		lastTransactionID = row.transactionID
+		lastOffset = row.Offset
+		lastRow = row
 	}
 
 	if lastOffset == 0 {
@@ -334,8 +323,7 @@ func (s *Subscriber) query(
 
 	ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(
 		topic,
-		lastOffset,
-		lastTransactionID,
+		lastRow,
 		s.config.ConsumerGroup,
 	)
 

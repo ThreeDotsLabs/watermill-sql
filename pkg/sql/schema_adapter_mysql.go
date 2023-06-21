@@ -1,10 +1,12 @@
 package sql
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/pkg/errors"
 )
 
 // DefaultMySQLSchema is a default implementation of SchemaAdapter based on MySQL.
@@ -70,7 +72,7 @@ func (s DefaultMySQLSchema) InsertQuery(topic string, msgs message.Messages) (st
 func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
 	nextOffsetQuery, nextOffsetArgs := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
 	selectQuery := `
-		SELECT offset, 0, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
+		SELECT offset, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
 		WHERE 
 			offset > (` + nextOffsetQuery + `)
 		ORDER BY 
@@ -80,8 +82,25 @@ func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offs
 	return selectQuery, nextOffsetArgs
 }
 
-func (s DefaultMySQLSchema) UnmarshalMessage(row Scanner) (offset int64, transactionID int64, msg *message.Message, err error) {
-	return unmarshalDefaultMessage(row)
+func (s DefaultMySQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
+	r := Row{}
+	err := row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
+	if err != nil {
+		return Row{}, errors.Wrap(err, "could not scan message row")
+	}
+
+	msg := message.NewMessage(string(r.UUID), r.Payload)
+
+	if r.Metadata != nil {
+		err = json.Unmarshal(r.Metadata, &msg.Metadata)
+		if err != nil {
+			return Row{}, errors.Wrap(err, "could not unmarshal metadata as JSON")
+		}
+	}
+
+	r.Msg = msg
+
+	return r, nil
 }
 
 func (s DefaultMySQLSchema) MessagesTable(topic string) string {
