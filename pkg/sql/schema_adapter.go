@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"database/sql"
 	"encoding/json"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -24,6 +25,9 @@ type SchemaAdapter interface {
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)
 	// that the appropriate tables exist to write messages to the given topic.
 	SchemaInitializingQueries(topic string) []string
+
+	// SubscribeIsolationLevel returns the isolation level that will be used when subscribing.
+	SubscribeIsolationLevel() sql.IsolationLevel
 }
 
 // Deprecated: Use DefaultMySQLSchema instead.

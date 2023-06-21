@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -135,4 +136,9 @@ func (s DefaultPostgreSQLSchema) MessagesTable(topic string) string {
 		return s.GenerateMessagesTableName(topic)
 	}
 	return fmt.Sprintf(`"watermill_%s"`, topic)
+}
+
+func (s DefaultPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
+	// For Postgres Repeatable Read is enough.
+	return sql.LevelRepeatableRead
 }

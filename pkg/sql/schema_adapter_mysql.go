@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -124,4 +125,9 @@ func (s DefaultMySQLSchema) MessagesTable(topic string) string {
 		return s.GenerateMessagesTableName(topic)
 	}
 	return fmt.Sprintf("`watermill_%s`", topic)
+}
+
+func (s DefaultMySQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
+	// MySQL requires serializable isolation level for not losing messages.
+	return sql.LevelSerializable
 }

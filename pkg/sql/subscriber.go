@@ -214,7 +214,7 @@ func (s *Subscriber) query(
 	logger watermill.LoggerAdapter,
 ) (noMsg bool, err error) {
 	txOptions := &sql.TxOptions{
-		Isolation: sql.LevelSerializable, // todo: for postgres is too much
+		Isolation: s.config.SchemaAdapter.SubscribeIsolationLevel(),
 	}
 	tx, err := s.db.BeginTx(ctx, txOptions)
 	if err != nil {
