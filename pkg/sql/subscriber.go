@@ -275,7 +275,6 @@ func (s *Subscriber) query(
 	}
 
 	for _, row := range messageRows {
-		// todo: does it make sense for bulk? add option to disable?
 		consumedQuery, consumedArgs := s.config.OffsetsAdapter.ConsumedMessageQuery(
 			topic,
 			row,
@@ -290,14 +289,11 @@ func (s *Subscriber) query(
 
 			_, err := tx.ExecContext(ctx, consumedQuery, consumedArgs...)
 
-			// todo: move after?
-			logger.Trace("Executed query to confirm message consumed", watermill.LogFields{
-				"err": err,
-			})
-
 			if err != nil {
 				return false, errors.Wrap(err, "cannot send consumed query")
 			}
+
+			logger.Trace("Executed query to confirm message consumed", nil)
 		}
 
 		logger = logger.With(watermill.LogFields{

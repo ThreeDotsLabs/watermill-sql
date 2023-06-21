@@ -214,7 +214,7 @@ func TestMySQLPublishSubscribe(t *testing.T) {
 func TestPostgreSQLPublishSubscribe(t *testing.T) {
 	features := tests.Features{
 		ConsumerGroups:      true,
-		ExactlyOnceDelivery: false, // todo: fix!
+		ExactlyOnceDelivery: false,
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}
@@ -230,7 +230,7 @@ func TestPostgreSQLPublishSubscribe(t *testing.T) {
 func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 	features := tests.Features{
 		ConsumerGroups:      true,
-		ExactlyOnceDelivery: false, // todo: fix!
+		ExactlyOnceDelivery: false,
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}

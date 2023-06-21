@@ -57,11 +57,5 @@ func (a DefaultPostgreSQLOffsetsAdapter) MessagesOffsetsTable(topic string) stri
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) ConsumedMessageQuery(topic string, row Row, consumerGroup string, consumerULID []byte) (string, []interface{}) {
-	// offset_consumed is not queried anywhere, it's used only to detect race conditions with NextOffsetQuery.
-	//ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (offset_consumed, consumer_group)
-	//	VALUES ($1, $2) ON CONFLICT("consumer_group") DO UPDATE SET offset_consumed=excluded.offset_consumed`
-	//return ackQuery, []interface{}{offset, consumerGroup}
-
-	// todo: should be supported?
 	return "", nil
 }
