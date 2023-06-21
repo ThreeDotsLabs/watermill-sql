@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill-sql/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill-sql/v2/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/subscriber"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
@@ -112,7 +112,7 @@ func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (mes
 		t,
 		newMySQL(t),
 		consumerGroup,
-		newMySQLSchemaAdapter(),
+		newMySQLSchemaAdapter(0),
 		newMySQLOffsetsAdapter(),
 	)
 }
@@ -125,12 +125,13 @@ func newMySQLOffsetsAdapter() sql.DefaultMySQLOffsetsAdapter {
 	}
 }
 
-func newMySQLSchemaAdapter() *testMySQLSchema {
+func newMySQLSchemaAdapter(bulkSize int) *testMySQLSchema {
 	return &testMySQLSchema{
 		sql.DefaultMySQLSchema{
 			GenerateMessagesTableName: func(topic string) string {
 				return fmt.Sprintf("`test_%s`", topic)
 			},
+			SubscribeBatchSize: bulkSize,
 		},
 	}
 }
@@ -144,7 +145,7 @@ func createPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string)
 		t,
 		newPostgreSQL(t),
 		consumerGroup,
-		newPostgresSchemaAdapter(),
+		newPostgresSchemaAdapter(0),
 		newPostgresOffsetsAdapter(),
 	)
 }
@@ -157,12 +158,13 @@ func newPostgresOffsetsAdapter() sql.DefaultPostgreSQLOffsetsAdapter {
 	}
 }
 
-func newPostgresSchemaAdapter() *testPostgreSQLSchema {
+func newPostgresSchemaAdapter(bulkSize int) *testPostgreSQLSchema {
 	return &testPostgreSQLSchema{
 		sql.DefaultPostgreSQLSchema{
 			GenerateMessagesTableName: func(topic string) string {
 				return fmt.Sprintf(`"test_%s"`, topic)
 			},
+			SubscribeBatchSize: bulkSize,
 		},
 	}
 }
@@ -302,13 +304,13 @@ func TestNotMissingMessages(t *testing.T) {
 		{
 			Name:           "mysql",
 			DbConstructor:  newMySQL,
-			SchemaAdapter:  newMySQLSchemaAdapter(),
+			SchemaAdapter:  newMySQLSchemaAdapter(0),
 			OffsetsAdapter: newMySQLOffsetsAdapter(),
 		},
 		{
 			Name:           "postgresql",
 			DbConstructor:  newPostgreSQL,
-			SchemaAdapter:  newPostgresSchemaAdapter(),
+			SchemaAdapter:  newPostgresSchemaAdapter(0),
 			OffsetsAdapter: newPostgresOffsetsAdapter(),
 		},
 	}
@@ -354,8 +356,7 @@ func TestNotMissingMessages(t *testing.T) {
 				messages, err := sub.Subscribe(context.Background(), topicName)
 				require.NoError(t, err)
 
-				// todo: increase timeout
-				received, all := subscriber.BulkRead(messages, len(messagesToPublish), time.Second*1)
+				received, all := subscriber.BulkRead(messages, len(messagesToPublish), time.Second*10)
 				assert.True(t, all)
 
 				tests.AssertAllMessagesReceived(t, messagesToPublish, received)
@@ -434,6 +435,89 @@ func TestNotMissingMessages(t *testing.T) {
 			time.Sleep(time.Millisecond * 10)
 
 			<-messagesAsserted
+		})
+	}
+}
+
+func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
+	testCases := []struct {
+		Name        string
+		Constructor func(t *testing.T) (message.Publisher, message.Subscriber)
+		Test        func(t *testing.T, tCtx tests.TestContext, pubSubConstructor tests.PubSubConstructor)
+	}{
+		{
+			Name: "TestPublishSubscribe_mysql_1",
+			Constructor: func(t *testing.T) (message.Publisher, message.Subscriber) {
+				return newPubSub(
+					t,
+					newMySQL(t),
+					"test",
+					newMySQLSchemaAdapter(1),
+					newMySQLOffsetsAdapter(),
+				)
+			},
+			Test: tests.TestPublishSubscribe,
+		},
+		{
+			Name: "TestConcurrentSubscribe_mysql_5",
+			Constructor: func(t *testing.T) (message.Publisher, message.Subscriber) {
+				return newPubSub(
+					t,
+					newMySQL(t),
+					"test",
+					newMySQLSchemaAdapter(5),
+					newMySQLOffsetsAdapter(),
+				)
+			},
+			Test: tests.TestConcurrentSubscribe,
+		},
+		{
+			Name: "TestConcurrentSubscribe_postgresql_1",
+			Constructor: func(t *testing.T) (message.Publisher, message.Subscriber) {
+				return newPubSub(
+					t,
+					newPostgreSQL(t),
+					"test",
+					newPostgresSchemaAdapter(1),
+					newPostgresOffsetsAdapter(),
+				)
+			},
+			Test: tests.TestPublishSubscribe,
+		},
+		{
+			Name: "TestConcurrentSubscribe_postgresql_5",
+			Constructor: func(t *testing.T) (message.Publisher, message.Subscriber) {
+				return newPubSub(
+					t,
+					newPostgreSQL(t),
+					"test",
+					newPostgresSchemaAdapter(5),
+					newPostgresOffsetsAdapter(),
+				)
+			},
+			Test: tests.TestConcurrentSubscribe,
+		},
+	}
+	for i := range testCases {
+		tc := testCases[i]
+
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+
+			tc.Test(
+				t,
+				tests.TestContext{
+					TestID: tests.NewTestID(),
+					Features: tests.Features{
+						ConsumerGroups:                      true,
+						ExactlyOnceDelivery:                 false,
+						GuaranteedOrder:                     true,
+						GuaranteedOrderWithSingleSubscriber: true,
+						Persistent:                          true,
+					},
+				},
+				tc.Constructor,
+			)
 		})
 	}
 }
