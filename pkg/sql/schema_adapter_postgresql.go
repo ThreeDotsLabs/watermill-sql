@@ -32,7 +32,8 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []strin
 			"created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			"payload" JSON DEFAULT NULL,
 			"metadata" JSON DEFAULT NULL,
-			"transaction_id" xid8 NOT NULL
+			"transaction_id" xid8 NOT NULL,
+			PRIMARY KEY ("transaction_id", "offset")
 		);
 	`
 
