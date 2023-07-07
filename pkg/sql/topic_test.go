@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill-sql/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill-sql/v2/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 
 	"github.com/pkg/errors"

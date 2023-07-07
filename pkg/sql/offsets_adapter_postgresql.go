@@ -23,23 +23,30 @@ func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string)
 		CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
 		consumer_group VARCHAR(255) NOT NULL,
 		offset_acked BIGINT,
-		offset_consumed BIGINT NOT NULL,
+		last_processed_transaction_id xid8 NOT NULL,
 		PRIMARY KEY(consumer_group)
 	)`}
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) (string, []interface{}) {
-	return `SELECT COALESCE(
-				(SELECT offset_acked
-				 FROM ` + a.MessagesOffsetsTable(topic) + `
-				 WHERE consumer_group=$1 FOR UPDATE
-				), 0)`,
+	return `SELECT 
+    			coalesce(MAX(offset_acked),0) AS offset_acked, 
+    			coalesce(MAX(last_processed_transaction_id::text), '0')::xid8 AS last_processed_transaction_id 
+			FROM ` + a.MessagesOffsetsTable(topic) + ` 
+			WHERE consumer_group=$1`,
 		[]interface{}{consumerGroup}
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, offset int, consumerGroup string) (string, []interface{}) {
-	ackQuery := `UPDATE ` + a.MessagesOffsetsTable(topic) + ` SET offset_acked = $1 WHERE consumer_group = $2`
-	return ackQuery, []interface{}{offset, consumerGroup}
+func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, row Row, consumerGroup string) (string, []interface{}) {
+	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + `(offset_acked, last_processed_transaction_id, consumer_group) 
+	VALUES 
+		($1, $2, $3) 
+	ON CONFLICT 
+		(consumer_group) 
+	DO UPDATE SET 
+		offset_acked = excluded.offset_acked,
+		last_processed_transaction_id = excluded.last_processed_transaction_id`
+	return ackQuery, []interface{}{row.Offset, row.ExtraData["transaction_id"], consumerGroup}
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) MessagesOffsetsTable(topic string) string {
@@ -49,14 +56,6 @@ func (a DefaultPostgreSQLOffsetsAdapter) MessagesOffsetsTable(topic string) stri
 	return fmt.Sprintf(`"watermill_offsets_%s"`, topic)
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) ConsumedMessageQuery(
-	topic string,
-	offset int,
-	consumerGroup string,
-	consumerULID []byte,
-) (string, []interface{}) {
-	// offset_consumed is not queried anywhere, it's used only to detect race conditions with NextOffsetQuery.
-	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (offset_consumed, consumer_group)
-		VALUES ($1, $2) ON CONFLICT("consumer_group") DO UPDATE SET offset_consumed=excluded.offset_consumed`
-	return ackQuery, []interface{}{offset, consumerGroup}
+func (a DefaultPostgreSQLOffsetsAdapter) ConsumedMessageQuery(topic string, row Row, consumerGroup string, consumerULID []byte) (string, []interface{}) {
+	return "", nil
 }

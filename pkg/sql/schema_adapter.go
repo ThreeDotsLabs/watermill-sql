@@ -14,27 +14,34 @@ type SchemaAdapter interface {
 	// InsertQuery returns the SQL query and arguments that will insert the Watermill message into the SQL storage.
 	InsertQuery(topic string, msgs message.Messages) (string, []interface{}, error)
 
-	// SelectQuery returns the the SQL query and arguments
+	// SelectQuery returns the SQL query and arguments
 	// that returns the next unread message for a given consumer group.
 	SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{})
 
 	// UnmarshalMessage transforms the Row obtained SelectQuery a Watermill message.
 	// It also returns the offset of the last read message, for the purpose of acking.
-	UnmarshalMessage(row *sql.Row) (offset int, msg *message.Message, err error)
+	UnmarshalMessage(row Scanner) (Row, error)
 
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)
 	// that the appropriate tables exist to write messages to the given topic.
 	SchemaInitializingQueries(topic string) []string
+
+	// SubscribeIsolationLevel returns the isolation level that will be used when subscribing.
+	SubscribeIsolationLevel() sql.IsolationLevel
 }
 
 // Deprecated: Use DefaultMySQLSchema instead.
 type DefaultSchema = DefaultMySQLSchema
 
-type defaultSchemaRow struct {
+type Row struct {
 	Offset   int64
 	UUID     []byte
 	Payload  []byte
 	Metadata []byte
+
+	Msg *message.Message
+
+	ExtraData map[string]any
 }
 
 func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
@@ -49,23 +56,4 @@ func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
 	}
 
 	return args, nil
-}
-
-func unmarshalDefaultMessage(row *sql.Row) (offset int, msg *message.Message, err error) {
-	r := defaultSchemaRow{}
-	err = row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
-	if err != nil {
-		return 0, nil, errors.Wrap(err, "could not scan message row")
-	}
-
-	msg = message.NewMessage(string(r.UUID), r.Payload)
-
-	if r.Metadata != nil {
-		err = json.Unmarshal(r.Metadata, &msg.Metadata)
-		if err != nil {
-			return 0, nil, errors.Wrap(err, "could not unmarshal metadata as JSON")
-		}
-	}
-
-	return int(r.Offset), msg, nil
 }

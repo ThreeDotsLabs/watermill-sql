@@ -42,3 +42,7 @@ func (s sqlArgsToLog) String() string {
 
 	return strings.Join(strArgs, ",")
 }
+
+type Scanner interface {
+	Scan(dest ...any) error
+}
