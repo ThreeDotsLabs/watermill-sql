@@ -88,13 +88,16 @@ func (s DefaultMySQLSchema) batchSize() int {
 
 func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
 	nextOffsetQuery, nextOffsetArgs := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
-	selectQuery := `
-		SELECT offset, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
-		WHERE 
-			offset > (` + nextOffsetQuery + `)
-		ORDER BY 
-			offset ASC
-		LIMIT ` + fmt.Sprintf("%d", s.batchSize())
+
+	selectQuery := fmt.Sprintf(`
+	SELECT %s, %s, %s, %s
+	FROM %s
+	WHERE
+	    %s > (%s)
+	ORDER BY
+	    %s ASC
+	LIMIT %d
+`, backticks("offset"), backticks("uuid"), backticks("payload"), backticks("metadata"), s.MessagesTable(topic), backticks("offset"), nextOffsetQuery, backticks("offset"), s.batchSize())
 
 	return selectQuery, nextOffsetArgs
 }
