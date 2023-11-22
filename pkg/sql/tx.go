@@ -7,7 +7,6 @@ import (
 	"fmt"
 )
 
-// todo: use in other places?
 func runInTx(
 	ctx context.Context,
 	db Beginner,
