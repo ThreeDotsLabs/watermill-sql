@@ -85,7 +85,10 @@ func TestDefaultPostgreSQLSchema(t *testing.T) {
 func testOneMessage(t *testing.T, publisher message.Publisher, subscriber message.Subscriber) {
 	topic := "test_" + watermill.NewULID()
 
-	messages, err := subscriber.Subscribe(context.Background(), topic)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	messages, err := subscriber.Subscribe(ctx, topic)
 	require.NoError(t, err)
 
 	msg := message.NewMessage(watermill.NewULID(), []byte(`{"json": "field"}`))
@@ -96,6 +99,7 @@ func testOneMessage(t *testing.T, publisher message.Publisher, subscriber messag
 	case received := <-messages:
 		require.Equal(t, msg.UUID, received.UUID)
 		require.Equal(t, msg.Payload, received.Payload)
+		received.Ack()
 	case <-time.After(time.Second * 5):
 		t.Error("Didn't receive any messages")
 	}
@@ -108,7 +112,7 @@ type testMySQLSchema struct {
 	sql.DefaultMySQLSchema
 }
 
-func (s *testMySQLSchema) SchemaInitializingQueries(topic string) []string {
+func (s *testMySQLSchema) SchemaInitializingQueries(topic string) []sql.Query {
 	createMessagesTable := strings.Join([]string{
 		"CREATE TABLE IF NOT EXISTS " + s.MessagesTable(topic) + " (",
 		"`offset` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,",
@@ -118,14 +122,14 @@ func (s *testMySQLSchema) SchemaInitializingQueries(topic string) []string {
 		");",
 	}, "\n")
 
-	return []string{createMessagesTable}
+	return []sql.Query{{Query: createMessagesTable}}
 }
 
 type testPostgreSQLSchema struct {
 	sql.DefaultPostgreSQLSchema
 }
 
-func (s *testPostgreSQLSchema) SchemaInitializingQueries(topic string) []string {
+func (s *testPostgreSQLSchema) SchemaInitializingQueries(topic string) []sql.Query {
 	createMessagesTable := `
 		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
 		"offset" SERIAL,
@@ -136,5 +140,5 @@ func (s *testPostgreSQLSchema) SchemaInitializingQueries(topic string) []string 
 	);
 	`
 
-	return []string{createMessagesTable}
+	return []sql.Query{{Query: createMessagesTable}}
 }

@@ -24,7 +24,7 @@ type DefaultPostgreSQLSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []string {
+func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query {
 	createMessagesTable := ` 
 		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
 			"offset" SERIAL,
@@ -37,10 +37,10 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []strin
 		);
 	`
 
-	return []string{createMessagesTable}
+	return []Query{{Query: createMessagesTable}}
 }
 
-func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages) (string, []interface{}, error) {
+func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages) (Query, error) {
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata, transaction_id) VALUES %s`,
 		s.MessagesTable(topic),
@@ -49,10 +49,10 @@ func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages
 
 	args, err := defaultInsertArgs(msgs)
 	if err != nil {
-		return "", nil, err
+		return Query{}, err
 	}
 
-	return insertQuery, args, nil
+	return Query{insertQuery, args}, nil
 }
 
 func defaultInsertMarkers(count int) string {
@@ -75,13 +75,13 @@ func (s DefaultPostgreSQLSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
+func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) Query {
 	// Query inspired by https://event-driven.io/en/ordering_in_postgres_outbox/
 
-	nextOffsetQuery, nextOffsetArgs := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
+	nextOffsetQuery := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
 	selectQuery := `
 		WITH last_processed AS (
-			` + nextOffsetQuery + `
+			` + nextOffsetQuery.Query + `
 		)
 
 		SELECT "offset", transaction_id, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
@@ -103,7 +103,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string,
 			"offset" ASC
 		LIMIT ` + fmt.Sprintf("%d", s.batchSize())
 
-	return selectQuery, nextOffsetArgs
+	return Query{selectQuery, nextOffsetQuery.Args}
 }
 
 func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (Row, error) {

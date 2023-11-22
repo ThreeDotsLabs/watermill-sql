@@ -30,9 +30,9 @@ func initializeSchema(
 	})
 
 	for _, q := range initializingQueries {
-		_, err := db.ExecContext(ctx, q)
+		_, err := db.ExecContext(ctx, q.Query, q.Args...)
 		if err != nil {
-			return errors.Wrap(err, "cound not initialize schema")
+			return errors.Wrap(err, "could not initialize schema")
 		}
 	}
 

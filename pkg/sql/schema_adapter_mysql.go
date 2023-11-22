@@ -49,7 +49,7 @@ type DefaultMySQLSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s DefaultMySQLSchema) SchemaInitializingQueries(topic string) []string {
+func (s DefaultMySQLSchema) SchemaInitializingQueries(topic string) []Query {
 	createMessagesTable := strings.Join([]string{
 		"CREATE TABLE IF NOT EXISTS " + s.MessagesTable(topic) + " (",
 		"`offset` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,",
@@ -60,10 +60,10 @@ func (s DefaultMySQLSchema) SchemaInitializingQueries(topic string) []string {
 		");",
 	}, "\n")
 
-	return []string{createMessagesTable}
+	return []Query{{Query: createMessagesTable}}
 }
 
-func (s DefaultMySQLSchema) InsertQuery(topic string, msgs message.Messages) (string, []interface{}, error) {
+func (s DefaultMySQLSchema) InsertQuery(topic string, msgs message.Messages) (Query, error) {
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata) VALUES %s`,
 		s.MessagesTable(topic),
@@ -72,10 +72,10 @@ func (s DefaultMySQLSchema) InsertQuery(topic string, msgs message.Messages) (st
 
 	args, err := defaultInsertArgs(msgs)
 	if err != nil {
-		return "", nil, err
+		return Query{}, err
 	}
 
-	return insertQuery, args, nil
+	return Query{insertQuery, args}, nil
 }
 
 func (s DefaultMySQLSchema) batchSize() int {
@@ -86,17 +86,18 @@ func (s DefaultMySQLSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) (string, []interface{}) {
-	nextOffsetQuery, nextOffsetArgs := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
+func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) Query {
+	nextOffsetQuery := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
+
 	selectQuery := `
 		SELECT offset, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
 		WHERE 
-			offset > (` + nextOffsetQuery + `)
+			offset > (` + nextOffsetQuery.Query + `)
 		ORDER BY 
 			offset ASC
 		LIMIT ` + fmt.Sprintf("%d", s.batchSize())
 
-	return selectQuery, nextOffsetArgs
+	return Query{Query: selectQuery, Args: nextOffsetQuery.Args}
 }
 
 func (s DefaultMySQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
