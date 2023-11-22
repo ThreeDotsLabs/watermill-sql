@@ -141,5 +141,5 @@ func (s DefaultPostgreSQLSchema) MessagesTable(topic string) string {
 
 func (s DefaultPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
 	// For Postgres Repeatable Read is enough.
-	return sql.LevelSerializable
+	return sql.LevelRepeatableRead
 }
