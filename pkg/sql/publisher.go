@@ -103,17 +103,17 @@ func (p *Publisher) Publish(topic string, messages ...*message.Message) (err err
 		return err
 	}
 
-	insertQuery, insertArgs, err := p.config.SchemaAdapter.InsertQuery(topic, messages)
+	insertQuery, err := p.config.SchemaAdapter.InsertQuery(topic, messages)
 	if err != nil {
 		return errors.Wrap(err, "cannot create insert query")
 	}
 
 	p.logger.Trace("Inserting message to SQL", watermill.LogFields{
-		"query":      insertQuery,
-		"query_args": sqlArgsToLog(insertArgs),
+		"query":      insertQuery.Query,
+		"query_args": sqlArgsToLog(insertQuery.Args),
 	})
 
-	_, err = p.db.ExecContext(context.Background(), insertQuery, insertArgs...)
+	_, err = p.db.ExecContext(context.Background(), insertQuery.Query, insertQuery.Args...)
 	if err != nil {
 		return errors.Wrap(err, "could not insert message as row")
 	}

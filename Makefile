@@ -15,6 +15,9 @@ test_race:
 
 test_stress:
 
+test_codecov:
+
+
 test_reconnect:
 	go test -tags=reconnect ./...
 

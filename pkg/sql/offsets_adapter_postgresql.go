@@ -18,26 +18,35 @@ type DefaultPostgreSQLOffsetsAdapter struct {
 	GenerateMessagesOffsetsTableName func(topic string) string
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string) []string {
-	return []string{`
-		CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
-		consumer_group VARCHAR(255) NOT NULL,
-		offset_acked BIGINT,
-		last_processed_transaction_id xid8 NOT NULL,
-		PRIMARY KEY(consumer_group)
-	)`}
+func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string) []Query {
+	return []Query{
+		{
+			Query: `
+				CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
+				consumer_group VARCHAR(255) NOT NULL,
+				offset_acked BIGINT,
+				last_processed_transaction_id xid8 NOT NULL,
+				PRIMARY KEY(consumer_group)
+			)`,
+		},
+	}
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) (string, []interface{}) {
-	return `SELECT 
-    			coalesce(MAX(offset_acked),0) AS offset_acked, 
-    			coalesce(MAX(last_processed_transaction_id::text), '0')::xid8 AS last_processed_transaction_id 
+func (a DefaultPostgreSQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) Query {
+	return Query{
+		Query: `
+			SELECT 
+    			offset_acked, 
+    			last_processed_transaction_id 
 			FROM ` + a.MessagesOffsetsTable(topic) + ` 
-			WHERE consumer_group=$1`,
-		[]interface{}{consumerGroup}
+			WHERE consumer_group=$1 
+			FOR UPDATE
+		`,
+		Args: []any{consumerGroup},
+	}
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, row Row, consumerGroup string) (string, []interface{}) {
+func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, row Row, consumerGroup string) Query {
 	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + `(offset_acked, last_processed_transaction_id, consumer_group) 
 	VALUES 
 		($1, $2, $3) 
@@ -46,7 +55,8 @@ func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, row Row, 
 	DO UPDATE SET 
 		offset_acked = excluded.offset_acked,
 		last_processed_transaction_id = excluded.last_processed_transaction_id`
-	return ackQuery, []interface{}{row.Offset, row.ExtraData["transaction_id"], consumerGroup}
+
+	return Query{ackQuery, []any{row.Offset, row.ExtraData["transaction_id"], consumerGroup}}
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) MessagesOffsetsTable(topic string) string {
@@ -56,6 +66,15 @@ func (a DefaultPostgreSQLOffsetsAdapter) MessagesOffsetsTable(topic string) stri
 	return fmt.Sprintf(`"watermill_offsets_%s"`, topic)
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) ConsumedMessageQuery(topic string, row Row, consumerGroup string, consumerULID []byte) (string, []interface{}) {
-	return "", nil
+func (a DefaultPostgreSQLOffsetsAdapter) ConsumedMessageQuery(topic string, row Row, consumerGroup string, consumerULID []byte) Query {
+	return Query{}
+}
+
+func (a DefaultPostgreSQLOffsetsAdapter) BeforeSubscribingQueries(topic string, consumerGroup string) []Query {
+	return []Query{
+		{
+			Query: `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (consumer_group, offset_acked, last_processed_transaction_id) VALUES ($1, 0, '0') ON CONFLICT DO NOTHING;`,
+			Args:  []any{consumerGroup},
+		},
+	}
 }

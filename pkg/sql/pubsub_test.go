@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill-sql/v2/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill-sql/v3/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/subscriber"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	driver "github.com/go-sql-driver/mysql"
-	pgx "github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/stdlib"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
@@ -125,13 +125,13 @@ func newMySQLOffsetsAdapter() sql.DefaultMySQLOffsetsAdapter {
 	}
 }
 
-func newMySQLSchemaAdapter(bulkSize int) *testMySQLSchema {
+func newMySQLSchemaAdapter(batchSize int) *testMySQLSchema {
 	return &testMySQLSchema{
 		sql.DefaultMySQLSchema{
 			GenerateMessagesTableName: func(topic string) string {
 				return fmt.Sprintf("`test_%s`", topic)
 			},
-			SubscribeBatchSize: bulkSize,
+			SubscribeBatchSize: batchSize,
 		},
 	}
 }
@@ -158,13 +158,13 @@ func newPostgresOffsetsAdapter() sql.DefaultPostgreSQLOffsetsAdapter {
 	}
 }
 
-func newPostgresSchemaAdapter(bulkSize int) *testPostgreSQLSchema {
+func newPostgresSchemaAdapter(batchSize int) *testPostgreSQLSchema {
 	return &testPostgreSQLSchema{
 		sql.DefaultPostgreSQLSchema{
 			GenerateMessagesTableName: func(topic string) string {
 				return fmt.Sprintf(`"test_%s"`, topic)
 			},
-			SubscribeBatchSize: bulkSize,
+			SubscribeBatchSize: batchSize,
 		},
 	}
 }
@@ -196,6 +196,8 @@ func createPgxPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscri
 }
 
 func TestMySQLPublishSubscribe(t *testing.T) {
+	t.Parallel()
+
 	features := tests.Features{
 		ConsumerGroups:      true,
 		ExactlyOnceDelivery: true,
@@ -212,9 +214,11 @@ func TestMySQLPublishSubscribe(t *testing.T) {
 }
 
 func TestPostgreSQLPublishSubscribe(t *testing.T) {
+	t.Parallel()
+
 	features := tests.Features{
 		ConsumerGroups:      true,
-		ExactlyOnceDelivery: false,
+		ExactlyOnceDelivery: true,
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}
@@ -228,6 +232,8 @@ func TestPostgreSQLPublishSubscribe(t *testing.T) {
 }
 
 func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
+	t.Parallel()
+
 	features := tests.Features{
 		ConsumerGroups:      true,
 		ExactlyOnceDelivery: false,
@@ -276,7 +282,10 @@ func TestCtxValues(t *testing.T) {
 			err = pub.Publish(topicName, messagesToPublish...)
 			require.NoError(t, err, "cannot publish message")
 
-			messages, err := sub.Subscribe(context.Background(), topicName)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			messages, err := sub.Subscribe(ctx, topicName)
 			require.NoError(t, err)
 
 			select {
@@ -285,6 +294,7 @@ func TestCtxValues(t *testing.T) {
 				assert.True(t, ok)
 				assert.NotNil(t, t, tx)
 				assert.IsType(t, &stdSQL.Tx{}, tx)
+				msg.Ack()
 			case <-time.After(time.Second * 10):
 				t.Fatal("no message received")
 			}
@@ -295,6 +305,8 @@ func TestCtxValues(t *testing.T) {
 // TestNotMissingMessages checks if messages are not missing when messages are published in concurrent transactions.
 // See more: https://github.com/ThreeDotsLabs/watermill/issues/311
 func TestNotMissingMessages(t *testing.T) {
+	t.Parallel()
+
 	pubSubs := []struct {
 		Name           string
 		DbConstructor  func(t *testing.T) *stdSQL.DB
@@ -350,10 +362,13 @@ func TestNotMissingMessages(t *testing.T) {
 
 			messagesAsserted := make(chan struct{})
 
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
 			go func() {
 				defer close(messagesAsserted)
 
-				messages, err := sub.Subscribe(context.Background(), topicName)
+				messages, err := sub.Subscribe(ctx, topicName)
 				require.NoError(t, err)
 
 				received, all := subscriber.BulkRead(messages, len(messagesToPublish), time.Second*10)
@@ -362,19 +377,19 @@ func TestNotMissingMessages(t *testing.T) {
 				tests.AssertAllMessagesReceived(t, messagesToPublish, received)
 			}()
 
-			tx0, err := db.BeginTx(context.Background(), &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
+			tx0, err := db.BeginTx(ctx, &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
 			assert.NoError(t, err)
 			time.Sleep(time.Millisecond * 10)
 
-			tx1, err := db.BeginTx(context.Background(), &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
+			tx1, err := db.BeginTx(ctx, &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
 			assert.NoError(t, err)
 			time.Sleep(time.Millisecond * 10)
 
-			txRollback, err := db.BeginTx(context.Background(), &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
+			txRollback, err := db.BeginTx(ctx, &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
 			assert.NoError(t, err)
 			time.Sleep(time.Millisecond * 10)
 
-			tx2, err := db.BeginTx(context.Background(), &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
+			tx2, err := db.BeginTx(ctx, &stdSQL.TxOptions{Isolation: stdSQL.LevelReadCommitted})
 			assert.NoError(t, err)
 			time.Sleep(time.Millisecond * 10)
 
@@ -440,6 +455,8 @@ func TestNotMissingMessages(t *testing.T) {
 }
 
 func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		Name        string
 		Constructor func(t *testing.T) (message.Publisher, message.Subscriber)
@@ -510,7 +527,7 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 					TestID: tests.NewTestID(),
 					Features: tests.Features{
 						ConsumerGroups:                      true,
-						ExactlyOnceDelivery:                 false,
+						ExactlyOnceDelivery:                 true,
 						GuaranteedOrder:                     true,
 						GuaranteedOrderWithSingleSubscriber: true,
 						Persistent:                          true,

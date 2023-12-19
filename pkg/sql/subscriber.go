@@ -21,6 +21,16 @@ var (
 type SubscriberConfig struct {
 	ConsumerGroup string
 
+	// AckDeadline is the time to wait for acking a message.
+	// If message is not acked within this time, it will be nacked and re-delivered.
+	//
+	// When messages are read in bulk, this time is calculated for each message separately.
+	//
+	// If you want to disable ack deadline, set it to 0.
+	//
+	// Must be non-negative. Nil value defaults to 30s.
+	AckDeadline *time.Duration
+
 	// PollInterval is the interval to wait between subsequent SELECT queries, if no more messages were found in the database (Prefer using the BackoffManager instead).
 	// Must be non-negative. Defaults to 1s.
 	PollInterval time.Duration
@@ -47,6 +57,10 @@ type SubscriberConfig struct {
 }
 
 func (c *SubscriberConfig) setDefaults() {
+	if c.AckDeadline == nil {
+		timeout := time.Second * 30
+		c.AckDeadline = &timeout
+	}
 	if c.PollInterval == 0 {
 		c.PollInterval = time.Second
 	}
@@ -62,6 +76,12 @@ func (c *SubscriberConfig) setDefaults() {
 }
 
 func (c SubscriberConfig) validate() error {
+	if c.AckDeadline == nil {
+		return errors.New("ack deadline is nil")
+	}
+	if c.AckDeadline != nil && *c.AckDeadline <= 0 {
+		return errors.New("ack deadline must be a positive duration")
+	}
 	if c.PollInterval <= 0 {
 		return errors.New("poll interval must be a positive duration")
 	}
@@ -158,6 +178,27 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 		}
 	}
 
+	bsq := s.config.OffsetsAdapter.BeforeSubscribingQueries(topic, s.config.ConsumerGroup)
+
+	if len(bsq) >= 1 {
+		err := runInTx(ctx, s.db, func(ctx context.Context, tx *sql.Tx) error {
+			for _, q := range bsq {
+				s.logger.Debug("Executing before subscribing query", watermill.LogFields{
+					"query": q,
+				})
+
+				_, err := tx.ExecContext(ctx, q.Query, q.Args...)
+				if err != nil {
+					return errors.Wrap(err, "cannot execute before subscribing query")
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// the information about closing the subscriber is propagated through ctx
 	ctx, cancel := context.WithCancel(ctx)
 	out := make(chan *message.Message)
@@ -202,6 +243,7 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 			}
 			logger.Trace("Backing off querying", watermill.LogFields{
 				"wait_time": backoff,
+				"no_msg":    noMsg,
 			})
 		}
 		sleepTime = backoff
@@ -238,16 +280,16 @@ func (s *Subscriber) query(
 		}
 	}()
 
-	selectQuery, selectQueryArgs := s.config.SchemaAdapter.SelectQuery(
+	selectQuery := s.config.SchemaAdapter.SelectQuery(
 		topic,
 		s.config.ConsumerGroup,
 		s.config.OffsetsAdapter,
 	)
 	logger.Trace("Querying message", watermill.LogFields{
-		"query":      selectQuery,
-		"query_args": sqlArgsToLog(selectQueryArgs),
+		"query":      selectQuery.Query,
+		"query_args": sqlArgsToLog(selectQuery.Args),
 	})
-	rows, err := tx.QueryContext(ctx, selectQuery, selectQueryArgs...)
+	rows, err := tx.QueryContext(ctx, selectQuery.Query, selectQuery.Args...)
 	if err != nil {
 		return false, errors.Wrap(err, "could not query message")
 	}
@@ -275,35 +317,10 @@ func (s *Subscriber) query(
 	}
 
 	for _, row := range messageRows {
-		consumedQuery, consumedArgs := s.config.OffsetsAdapter.ConsumedMessageQuery(
-			topic,
-			row,
-			s.config.ConsumerGroup,
-			s.consumerIdBytes,
-		)
-		if consumedQuery != "" {
-			logger.Trace("Executing query to confirm message consumed", watermill.LogFields{
-				"query":      consumedQuery,
-				"query_args": sqlArgsToLog(consumedArgs),
-			})
-
-			_, err := tx.ExecContext(ctx, consumedQuery, consumedArgs...)
-
-			if err != nil {
-				return false, errors.Wrap(err, "cannot send consumed query")
-			}
-
-			logger.Trace("Executed query to confirm message consumed", nil)
+		acked, err := s.processMessage(ctx, topic, row, tx, out, logger)
+		if err != nil {
+			return false, errors.Wrap(err, "could not process message")
 		}
-
-		logger = logger.With(watermill.LogFields{
-			"msg_uuid": row.Msg.UUID,
-		})
-		logger.Trace("Received message", nil)
-
-		msgCtx := setTxToContext(ctx, tx)
-
-		acked := s.sendMessage(msgCtx, row.Msg, out, logger)
 		if !acked {
 			break
 		}
@@ -316,18 +333,18 @@ func (s *Subscriber) query(
 		return true, nil
 	}
 
-	ackQuery, ackArgs := s.config.OffsetsAdapter.AckMessageQuery(
+	ackQuery := s.config.OffsetsAdapter.AckMessageQuery(
 		topic,
 		lastRow,
 		s.config.ConsumerGroup,
 	)
 
 	logger.Trace("Executing ack message query", watermill.LogFields{
-		"query":      ackQuery,
-		"query_args": sqlArgsToLog(ackArgs),
+		"query":      ackQuery.Query,
+		"query_args": sqlArgsToLog(ackQuery.Args),
 	})
 
-	result, err := tx.ExecContext(ctx, ackQuery, ackArgs...)
+	result, err := tx.ExecContext(ctx, ackQuery.Query, ackQuery.Args...)
 	if err != nil {
 		return false, errors.Wrap(err, "could not get args for acking the message")
 	}
@@ -339,6 +356,50 @@ func (s *Subscriber) query(
 	})
 
 	return false, nil
+}
+
+func (s *Subscriber) processMessage(
+	ctx context.Context,
+	topic string,
+	row Row,
+	tx *sql.Tx,
+	out chan *message.Message,
+	logger watermill.LoggerAdapter,
+) (bool, error) {
+	if *s.config.AckDeadline != 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *s.config.AckDeadline)
+		defer cancel()
+	}
+
+	consumedQuery := s.config.OffsetsAdapter.ConsumedMessageQuery(
+		topic,
+		row,
+		s.config.ConsumerGroup,
+		s.consumerIdBytes,
+	)
+	if !consumedQuery.IsZero() {
+		logger.Trace("Executing query to confirm message consumed", watermill.LogFields{
+			"query":      consumedQuery.Args,
+			"query_args": sqlArgsToLog(consumedQuery.Args),
+		})
+
+		_, err := tx.ExecContext(ctx, consumedQuery.Query, consumedQuery.Args...)
+		if err != nil {
+			return false, errors.Wrap(err, "cannot send consumed query")
+		}
+
+		logger.Trace("Executed query to confirm message consumed", nil)
+	}
+
+	logger = logger.With(watermill.LogFields{
+		"msg_uuid": row.Msg.UUID,
+	})
+	logger.Trace("Received message", nil)
+
+	msgCtx := setTxToContext(ctx, tx)
+
+	return s.sendMessage(msgCtx, row.Msg, out, logger), nil
 }
 
 // sendMessages sends messages on the output channel.
