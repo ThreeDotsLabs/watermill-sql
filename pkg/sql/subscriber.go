@@ -27,6 +27,8 @@ type SubscriberConfig struct {
 	// When messages are read in bulk, this time is calculated for each message separately.
 	//
 	// If you want to disable ack deadline, set it to 0.
+	// Warning: when ack deadline is disabled, messages which are not acked may block PostgreSQL subscriber from reading new messages
+	// due to not increasing `pg_snapshot_xmin(pg_current_snapshot())` value.
 	//
 	// Must be non-negative. Nil value defaults to 30s.
 	AckDeadline *time.Duration

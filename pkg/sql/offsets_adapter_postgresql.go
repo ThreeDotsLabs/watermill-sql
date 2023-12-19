@@ -73,6 +73,14 @@ func (a DefaultPostgreSQLOffsetsAdapter) ConsumedMessageQuery(topic string, row 
 func (a DefaultPostgreSQLOffsetsAdapter) BeforeSubscribingQueries(topic string, consumerGroup string) []Query {
 	return []Query{
 		{
+			// It's required for exactly-once-delivery guarantee.
+			// It adds "zero offsets" to the table with offsets.
+			//
+			// Without that, `FOR UDATE` from `NextOffsetQuery` won't work,
+			// because there is nothing to lock.
+			//
+			// If "zero offsets" won't be present and multiple concurrent subscribers will try to consume them it
+			// will lead to multiple delivery (because offsets are not locked).
 			Query: `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (consumer_group, offset_acked, last_processed_transaction_id) VALUES ($1, 0, '0') ON CONFLICT DO NOTHING;`,
 			Args:  []any{consumerGroup},
 		},
