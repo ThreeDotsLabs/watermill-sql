@@ -6,14 +6,20 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill-sql/v3/pkg/sql"
+	"github.com/julesjcraske/watermill-sql/v3/pkg/sql"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 )
 
+type Conn interface {
+	BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error)
+	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, arguments ...interface{}) (pgx.Rows, error)
+}
+
 type Beginner struct {
-	*pgx.Conn
+	Conn
 }
 
 type Tx struct {
