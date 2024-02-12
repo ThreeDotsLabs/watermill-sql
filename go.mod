@@ -1,10 +1,11 @@
-module github.com/julesjcraske/watermill-sql/v3
+module github.com/ThreeDotsLabs/watermill-sql/v3
 
 go 1.20
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.2.0
 	github.com/go-sql-driver/mysql v1.4.1
+	github.com/jackc/pgconn v1.6.4
 	github.com/jackc/pgx/v4 v4.8.1
 	github.com/lib/pq v1.3.0
 	github.com/oklog/ulid v1.3.1
@@ -18,7 +19,6 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
-	github.com/jackc/pgconn v1.6.4 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgproto3/v2 v2.0.2 // indirect
