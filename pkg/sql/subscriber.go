@@ -183,7 +183,7 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 	bsq := s.config.OffsetsAdapter.BeforeSubscribingQueries(topic, s.config.ConsumerGroup)
 
 	if len(bsq) >= 1 {
-		err := runInTx(ctx, s.db, func(ctx context.Context, tx *sql.Tx) error {
+		err := runInTx(ctx, s.db, func(ctx context.Context, tx Tx) error {
 			for _, q := range bsq {
 				s.logger.Debug("Executing before subscribing query", watermill.LogFields{
 					"query": q,
@@ -364,7 +364,7 @@ func (s *Subscriber) processMessage(
 	ctx context.Context,
 	topic string,
 	row Row,
-	tx *sql.Tx,
+	tx Tx,
 	out chan *message.Message,
 	logger watermill.LoggerAdapter,
 ) (bool, error) {
