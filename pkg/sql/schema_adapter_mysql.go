@@ -89,13 +89,11 @@ func (s DefaultMySQLSchema) batchSize() int {
 func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) Query {
 	nextOffsetQuery := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
 
-	selectQuery := `
-		SELECT offset, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
-		WHERE 
-			offset > (` + nextOffsetQuery.Query + `)
-		ORDER BY 
-			offset ASC
-		LIMIT ` + fmt.Sprintf("%d", s.batchSize())
+	// It's important to wrap offset with "`" for MariaDB.
+	// See https://github.com/ThreeDotsLabs/watermill/issues/377
+	selectQuery := "SELECT `offset`, `uuid`, `payload`, `metadata` FROM " + s.MessagesTable(topic) +
+		" WHERE `offset` > (" + nextOffsetQuery.Query + ") ORDER BY `offset` ASC" +
+		` LIMIT ` + fmt.Sprintf("%d", s.batchSize())
 
 	return Query{Query: selectQuery, Args: nextOffsetQuery.Args}
 }
