@@ -22,12 +22,12 @@ import (
 )
 
 var (
-	logger = watermill.NewStdLogger(true, false)
+	logger = watermill.NewStdLogger(false, false)
 )
 
 func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
 	publisher, err := sql.NewPublisher(
-		db,
+		&sql.StdSQLBeginner{DB: db},
 		sql.PublisherConfig{
 			SchemaAdapter: schemaAdapter,
 		},
@@ -36,7 +36,7 @@ func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter 
 	require.NoError(t, err)
 
 	subscriber, err := sql.NewSubscriber(
-		db,
+		&sql.StdSQLBeginner{DB: db},
 		sql.SubscriberConfig{
 			ConsumerGroup: consumerGroup,
 
@@ -293,7 +293,7 @@ func TestCtxValues(t *testing.T) {
 				tx, ok := sql.TxFromContext(msg.Context())
 				assert.True(t, ok)
 				assert.NotNil(t, t, tx)
-				assert.IsType(t, &stdSQL.Tx{}, tx)
+				assert.IsType(t, &sql.StdSQLTx{}, tx)
 				msg.Ack()
 			case <-time.After(time.Second * 10):
 				t.Fatal("no message received")
@@ -344,7 +344,7 @@ func TestNotMissingMessages(t *testing.T) {
 			}
 
 			sub, err := sql.NewSubscriber(
-				db,
+				&sql.StdSQLBeginner{DB: db},
 				sql.SubscriberConfig{
 					ConsumerGroup: "consumerGroup",
 
@@ -394,7 +394,7 @@ func TestNotMissingMessages(t *testing.T) {
 			time.Sleep(time.Millisecond * 10)
 
 			pub0, err := sql.NewPublisher(
-				tx0,
+				&sql.StdSQLTx{Tx: tx0},
 				sql.PublisherConfig{
 					SchemaAdapter: pubSub.SchemaAdapter,
 				},
@@ -405,7 +405,7 @@ func TestNotMissingMessages(t *testing.T) {
 			require.NoError(t, err, "cannot publish message")
 
 			pub1, err := sql.NewPublisher(
-				tx1,
+				&sql.StdSQLTx{Tx: tx1},
 				sql.PublisherConfig{
 					SchemaAdapter: pubSub.SchemaAdapter,
 				},
@@ -416,7 +416,7 @@ func TestNotMissingMessages(t *testing.T) {
 			require.NoError(t, err, "cannot publish message")
 
 			pubRollback, err := sql.NewPublisher(
-				txRollback,
+				&sql.StdSQLTx{Tx: txRollback},
 				sql.PublisherConfig{
 					SchemaAdapter: pubSub.SchemaAdapter,
 				},
@@ -427,7 +427,7 @@ func TestNotMissingMessages(t *testing.T) {
 			require.NoError(t, err, "cannot publish message")
 
 			pub2, err := sql.NewPublisher(
-				tx2,
+				&sql.StdSQLTx{Tx: tx2},
 				sql.PublisherConfig{
 					SchemaAdapter: pubSub.SchemaAdapter,
 				},

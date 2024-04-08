@@ -7,27 +7,35 @@ import (
 	"strings"
 )
 
-// interface definitions borrowed from github.com/volatiletech/sqlboiler
+// A Result summarizes an executed SQL command.
+type Result interface {
+	// RowsAffected returns the number of rows affected by an
+	// update, insert, or delete. Not every database or database
+	// driver may support this.
+	RowsAffected() (int64, error)
+}
 
-// Executor can perform SQL queries.
-type Executor interface {
-	Exec(query string, args ...interface{}) (sql.Result, error)
-	Query(query string, args ...interface{}) (*sql.Rows, error)
-	QueryRow(query string, args ...interface{}) *sql.Row
+type Rows interface {
+	Scan(dest ...any) error
+	Close() error
+	Next() bool
+}
+
+type Tx interface {
+	ContextExecutor
+	Rollback() error
+	Commit() error
 }
 
 // ContextExecutor can perform SQL queries with context
 type ContextExecutor interface {
-	Executor
-
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (Rows, error)
 }
 
 // Beginner begins transactions.
 type Beginner interface {
-	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	BeginTx(context.Context, *sql.TxOptions) (Tx, error)
 	ContextExecutor
 }
 
