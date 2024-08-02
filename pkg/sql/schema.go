@@ -2,9 +2,9 @@ package sql
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/pkg/errors"
 )
 
 func initializeSchema(
@@ -30,9 +30,9 @@ func initializeSchema(
 	})
 
 	for _, q := range initializingQueries {
-		_, err := db.ExecContext(ctx, q.Query, q.Args...)
+		_, err = db.ExecContext(ctx, q.Query, q.Args...)
 		if err != nil {
-			return errors.Wrap(err, "could not initialize schema")
+			return fmt.Errorf("could not initialize schema: %w", err)
 		}
 	}
 
