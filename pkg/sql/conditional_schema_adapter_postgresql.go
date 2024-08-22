@@ -8,17 +8,17 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-type WhereClauseParams struct {
+type GenerateWhereClauseParams struct {
 	Topic string
 }
 
 // ConditionalPostgreSQLSchema is a schema adapter for PostgreSQL that allows to filter messages by some condition.
 // It DOES NOT support consumer groups.
 type ConditionalPostgreSQLSchema struct {
-	// WhereClause is a function that returns a where clause and arguments for the SELECT query.
+	// GenerateWhereClause is a function that returns a where clause and arguments for the SELECT query.
 	// It may be used to filter messages by some condition.
 	// If empty, no where clause will be added.
-	WhereClause func(params WhereClauseParams) (string, []any)
+	GenerateWhereClause func(params GenerateWhereClauseParams) (string, []any)
 
 	// GenerateMessagesTableName may be used to override how the messages table name is generated.
 	GenerateMessagesTableName func(topic string) string
@@ -75,11 +75,11 @@ func (s ConditionalPostgreSQLSchema) SelectQuery(topic string, consumerGroup str
 		panic("consumer groups are not supported in ConditionalPostgreSQLSchema")
 	}
 
-	params := WhereClauseParams{
+	params := GenerateWhereClauseParams{
 		Topic: topic,
 	}
 
-	where, args := s.WhereClause(params)
+	where, args := s.GenerateWhereClause(params)
 	if where != "" {
 		where = "WHERE " + where
 	}
