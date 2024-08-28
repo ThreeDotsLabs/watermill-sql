@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/pkg/errors"
 )
 
 // DefaultPostgreSQLSchema is a default implementation of SchemaAdapter based on PostgreSQL.
@@ -112,7 +111,7 @@ func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
 
 	err := row.Scan(&r.Offset, &transactionID, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {
-		return Row{}, errors.Wrap(err, "could not scan message row")
+		return Row{}, fmt.Errorf("could not scan message row: %w", err)
 	}
 
 	msg := message.NewMessage(string(r.UUID), r.Payload)
@@ -120,7 +119,7 @@ func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
 	if r.Metadata != nil {
 		err = json.Unmarshal(r.Metadata, &msg.Metadata)
 		if err != nil {
-			return Row{}, errors.Wrap(err, "could not unmarshal metadata as JSON")
+			return Row{}, fmt.Errorf("could not unmarshal metadata as JSON: %w", err)
 		}
 	}
 

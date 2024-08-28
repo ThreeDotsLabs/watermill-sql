@@ -3,12 +3,12 @@ package sql
 import (
 	"context"
 	"database/sql"
-	stdErrors "errors"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/oklog/ulid"
-	"github.com/pkg/errors"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -126,7 +126,7 @@ func NewSubscriber(db Beginner, config SubscriberConfig, logger watermill.Logger
 	config.setDefaults()
 	err := config.validate()
 	if err != nil {
-		return nil, errors.Wrap(err, "invalid config")
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	if logger == nil {
@@ -135,7 +135,7 @@ func NewSubscriber(db Beginner, config SubscriberConfig, logger watermill.Logger
 
 	idBytes, idStr, err := newSubscriberID()
 	if err != nil {
-		return &Subscriber{}, errors.Wrap(err, "cannot generate subscriber id")
+		return &Subscriber{}, fmt.Errorf("cannot generate subscriber id: %w", err)
 	}
 	logger = logger.With(watermill.LogFields{"subscriber_id": idStr})
 
@@ -159,7 +159,7 @@ func newSubscriberID() ([]byte, string, error) {
 	id := watermill.NewULID()
 	idBytes, err := ulid.MustParseStrict(id).MarshalBinary()
 	if err != nil {
-		return nil, "", errors.Wrap(err, "cannot marshal subscriber id")
+		return nil, "", fmt.Errorf("cannot marshal subscriber id: %w", err)
 	}
 
 	return idBytes, id, nil
@@ -191,7 +191,7 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 
 				_, err := tx.ExecContext(ctx, q.Query, q.Args...)
 				if err != nil {
-					return errors.Wrap(err, "cannot execute before subscribing query")
+					return fmt.Errorf("cannot execute before subscribing query: %w", err)
 				}
 			}
 			return nil
@@ -263,20 +263,20 @@ func (s *Subscriber) query(
 	}
 	tx, err := s.db.BeginTx(ctx, txOptions)
 	if err != nil {
-		return false, errors.Wrap(err, "could not begin tx for querying")
+		return false, fmt.Errorf("could not begin tx for querying: %w", err)
 	}
 
 	defer func() {
 		if err != nil {
 			rollbackErr := tx.Rollback()
-			if rollbackErr != nil && rollbackErr != sql.ErrTxDone {
+			if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
 				logger.Error("could not rollback tx for querying message", rollbackErr, watermill.LogFields{
 					"query_err": err,
 				})
 			}
 		} else {
 			commitErr := tx.Commit()
-			if commitErr != nil && commitErr != sql.ErrTxDone {
+			if commitErr != nil && !errors.Is(commitErr, sql.ErrTxDone) {
 				logger.Error("could not commit tx for querying message", commitErr, nil)
 			}
 		}
@@ -293,12 +293,12 @@ func (s *Subscriber) query(
 	})
 	rows, err := tx.QueryContext(ctx, selectQuery.Query, selectQuery.Args...)
 	if err != nil {
-		return false, errors.Wrap(err, "could not query message")
+		return false, fmt.Errorf("could not query message: %w", err)
 	}
 
 	defer func() {
 		if rowsCloseErr := rows.Close(); rowsCloseErr != nil {
-			err = stdErrors.Join(err, errors.Wrap(err, "could not close rows"))
+			err = errors.Join(err, fmt.Errorf("could not close rows: %w", err))
 		}
 	}()
 
@@ -309,10 +309,10 @@ func (s *Subscriber) query(
 
 	for rows.Next() {
 		row, err := s.config.SchemaAdapter.UnmarshalMessage(rows)
-		if errors.Cause(err) == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return true, nil
 		} else if err != nil {
-			return false, errors.Wrap(err, "could not unmarshal message from query")
+			return false, fmt.Errorf("could not unmarshal message from query: %w", err)
 		}
 
 		messageRows = append(messageRows, row)
@@ -321,7 +321,7 @@ func (s *Subscriber) query(
 	for _, row := range messageRows {
 		acked, err := s.processMessage(ctx, topic, row, tx, out, logger)
 		if err != nil {
-			return false, errors.Wrap(err, "could not process message")
+			return false, fmt.Errorf("could not process message: %w", err)
 		}
 		if !acked {
 			break
@@ -348,7 +348,7 @@ func (s *Subscriber) query(
 
 	result, err := tx.ExecContext(ctx, ackQuery.Query, ackQuery.Args...)
 	if err != nil {
-		return false, errors.Wrap(err, "could not get args for acking the message")
+		return false, fmt.Errorf("could not get args for acking the message: %w", err)
 	}
 
 	rowsAffected, _ := result.RowsAffected()
@@ -388,7 +388,7 @@ func (s *Subscriber) processMessage(
 
 		_, err := tx.ExecContext(ctx, consumedQuery.Query, consumedQuery.Args...)
 		if err != nil {
-			return false, errors.Wrap(err, "cannot send consumed query")
+			return false, fmt.Errorf("cannot send consumed query: %w", err)
 		}
 
 		logger.Trace("Executed query to confirm message consumed", nil)
