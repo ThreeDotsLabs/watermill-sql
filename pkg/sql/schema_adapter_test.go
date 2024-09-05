@@ -16,7 +16,7 @@ import (
 // TestDefaultMySQLSchema checks if the SQL schema defined in DefaultMySQLSchema is correctly executed
 // and if message marshaling works as intended.
 func TestDefaultMySQLSchema(t *testing.T) {
-	db := &sql.StdSQLBeginner{DB: newMySQL(t)}
+	db := newMySQL(t)
 
 	publisher, err := sql.NewPublisher(db, sql.PublisherConfig{
 		SchemaAdapter:        sql.DefaultMySQLSchema{},
@@ -36,11 +36,11 @@ func TestDefaultMySQLSchema(t *testing.T) {
 
 func TestDefaultMySQLSchema_implicit_commit_warning(t *testing.T) {
 	db := newMySQL(t)
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
 
 	schemaAdapter := sql.DefaultMySQLSchema{}
-	_, err = sql.NewPublisher(&sql.StdSQLTx{Tx: tx}, sql.PublisherConfig{
+	_, err = sql.NewPublisher(tx, sql.PublisherConfig{
 		SchemaAdapter:        schemaAdapter,
 		AutoInitializeSchema: true,
 	}, logger)
@@ -50,11 +50,11 @@ func TestDefaultMySQLSchema_implicit_commit_warning(t *testing.T) {
 
 func TestDefaultMySQLSchema_implicit_commit(t *testing.T) {
 	db := newMySQL(t)
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
 
 	schemaAdapter := sql.DefaultMySQLSchema{}
-	_, err = sql.NewPublisher(&sql.StdSQLTx{Tx: tx}, sql.PublisherConfig{
+	_, err = sql.NewPublisher(tx, sql.PublisherConfig{
 		SchemaAdapter:        schemaAdapter,
 		AutoInitializeSchema: true,
 	}, logger)
@@ -64,7 +64,7 @@ func TestDefaultMySQLSchema_implicit_commit(t *testing.T) {
 // TestDefaultPostgreSQLSchema checks if the SQL schema defined in DefaultPostgreSQLSchema is correctly executed
 // and if message marshaling works as intended.
 func TestDefaultPostgreSQLSchema(t *testing.T) {
-	db := &sql.StdSQLBeginner{DB: newPostgreSQL(t)}
+	db := newPostgreSQL(t)
 
 	publisher, err := sql.NewPublisher(db, sql.PublisherConfig{
 		SchemaAdapter:        sql.DefaultPostgreSQLSchema{},

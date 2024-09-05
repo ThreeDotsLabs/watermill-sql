@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
+	wpgx "github.com/ThreeDotsLabs/watermill-sql/v3/pkg/pgx"
 	"github.com/ThreeDotsLabs/watermill-sql/v3/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/subscriber"
@@ -25,9 +26,9 @@ var (
 	logger = watermill.NewStdLogger(false, false)
 )
 
-func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
+func newPubSub(t *testing.T, db sql.Beginner, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
 	publisher, err := sql.NewPublisher(
-		&sql.StdSQLBeginner{DB: db},
+		db,
 		sql.PublisherConfig{
 			SchemaAdapter: schemaAdapter,
 		},
@@ -36,7 +37,7 @@ func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter 
 	require.NoError(t, err)
 
 	subscriber, err := sql.NewSubscriber(
-		&sql.StdSQLBeginner{DB: db},
+		db,
 		sql.SubscriberConfig{
 			ConsumerGroup: consumerGroup,
 
@@ -52,7 +53,7 @@ func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter 
 	return publisher, subscriber
 }
 
-func newMySQL(t *testing.T) *stdSQL.DB {
+func newMySQL(t *testing.T) sql.Beginner {
 	addr := os.Getenv("WATERMILL_TEST_MYSQL_HOST")
 	if addr == "" {
 		addr = "localhost"
@@ -70,10 +71,10 @@ func newMySQL(t *testing.T) *stdSQL.DB {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	return db
+	return sql.StdSQLBeginner{DB: db}
 }
 
-func newPostgreSQL(t *testing.T) *stdSQL.DB {
+func newPostgreSQL(t *testing.T) sql.Beginner {
 	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
 	if addr == "" {
 		addr = "localhost"
@@ -86,10 +87,10 @@ func newPostgreSQL(t *testing.T) *stdSQL.DB {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	return db
+	return sql.StdSQLBeginner{DB: db}
 }
 
-func newPgxPostgreSQL(t *testing.T) *stdSQL.DB {
+func newPgxPostgreSQL(t *testing.T) sql.Beginner {
 	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
 	if addr == "" {
 		addr = "localhost"
@@ -104,7 +105,24 @@ func newPgxPostgreSQL(t *testing.T) *stdSQL.DB {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	return db
+	return sql.StdSQLBeginner{DB: db}
+}
+
+func newPgx(t *testing.T) sql.Beginner {
+	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
+	if addr == "" {
+		addr = "localhost"
+	}
+
+	connStr := fmt.Sprintf("postgres://watermill:password@%s/watermill?sslmode=disable", addr)
+
+	db, err := pgx.Connect(context.Background(), connStr)
+	require.NoError(t, err)
+
+	err = db.Ping(context.Background())
+	require.NoError(t, err)
+
+	return wpgx.Beginner{Conn: db}
 }
 
 func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
@@ -187,12 +205,34 @@ func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup stri
 	return newPubSub(t, newPgxPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
 }
 
+func createPgxPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+	schemaAdapter := &testPostgreSQLSchema{
+		sql.DefaultPostgreSQLSchema{
+			GenerateMessagesTableName: func(topic string) string {
+				return fmt.Sprintf(`"test_pgx_%s"`, topic)
+			},
+		},
+	}
+
+	offsetsAdapter := sql.DefaultPostgreSQLOffsetsAdapter{
+		GenerateMessagesOffsetsTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_pgx_offsets_%s"`, topic)
+		},
+	}
+
+	return newPubSub(t, newPgx(t), consumerGroup, schemaAdapter, offsetsAdapter)
+}
+
 func createPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 	return createPostgreSQLPubSubWithConsumerGroup(t, "test")
 }
 
 func createPgxPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 	return createPgxPostgreSQLPubSubWithConsumerGroup(t, "test")
+}
+
+func createPgxPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
+	return createPgxPubSubWithConsumerGroup(t, "test")
 }
 
 func TestMySQLPublishSubscribe(t *testing.T) {
@@ -246,6 +286,24 @@ func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 		features,
 		createPgxPostgreSQLPubSub,
 		createPgxPostgreSQLPubSubWithConsumerGroup,
+	)
+}
+
+func TestPgxPublishSubscribe(t *testing.T) {
+	t.Parallel()
+
+	features := tests.Features{
+		ConsumerGroups:      true,
+		ExactlyOnceDelivery: false,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		createPgxPubSub,
+		createPgxPubSubWithConsumerGroup,
 	)
 }
 
@@ -309,7 +367,7 @@ func TestNotMissingMessages(t *testing.T) {
 
 	pubSubs := []struct {
 		Name           string
-		DbConstructor  func(t *testing.T) *stdSQL.DB
+		DbConstructor  func(t *testing.T) sql.Beginner
 		SchemaAdapter  sql.SchemaAdapter
 		OffsetsAdapter sql.OffsetsAdapter
 	}{
@@ -344,7 +402,7 @@ func TestNotMissingMessages(t *testing.T) {
 			}
 
 			sub, err := sql.NewSubscriber(
-				&sql.StdSQLBeginner{DB: db},
+				db,
 				sql.SubscriberConfig{
 					ConsumerGroup: "consumerGroup",
 
@@ -394,7 +452,7 @@ func TestNotMissingMessages(t *testing.T) {
 			time.Sleep(time.Millisecond * 10)
 
 			pub0, err := sql.NewPublisher(
-				&sql.StdSQLTx{Tx: tx0},
+				tx0,
 				sql.PublisherConfig{
 					SchemaAdapter: pubSub.SchemaAdapter,
 				},
@@ -405,7 +463,7 @@ func TestNotMissingMessages(t *testing.T) {
 			require.NoError(t, err, "cannot publish message")
 
 			pub1, err := sql.NewPublisher(
-				&sql.StdSQLTx{Tx: tx1},
+				tx1,
 				sql.PublisherConfig{
 					SchemaAdapter: pubSub.SchemaAdapter,
 				},
@@ -416,7 +474,7 @@ func TestNotMissingMessages(t *testing.T) {
 			require.NoError(t, err, "cannot publish message")
 
 			pubRollback, err := sql.NewPublisher(
-				&sql.StdSQLTx{Tx: txRollback},
+				txRollback,
 				sql.PublisherConfig{
 					SchemaAdapter: pubSub.SchemaAdapter,
 				},
@@ -427,7 +485,7 @@ func TestNotMissingMessages(t *testing.T) {
 			require.NoError(t, err, "cannot publish message")
 
 			pub2, err := sql.NewPublisher(
-				&sql.StdSQLTx{Tx: tx2},
+				tx2,
 				sql.PublisherConfig{
 					SchemaAdapter: pubSub.SchemaAdapter,
 				},
