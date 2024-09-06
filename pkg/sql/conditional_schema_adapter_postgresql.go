@@ -94,12 +94,12 @@ func (s ConditionalPostgreSQLSchema) SelectQuery(topic string, consumerGroup str
 
 	where, args := s.GenerateWhereClause(params)
 	if where != "" {
-		where = "WHERE " + where
+		where = "AND " + where
 	}
 
 	selectQuery := `
 		SELECT "offset", uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
-		` + where + `
+		WHERE acked = false ` + where + `
 		ORDER BY
 			"offset" ASC
 		LIMIT ` + fmt.Sprintf("%d", s.batchSize()) + `
