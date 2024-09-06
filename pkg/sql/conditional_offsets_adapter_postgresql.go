@@ -30,9 +30,9 @@ func (a ConditionalPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, row R
 	table := a.MessagesTable(topic)
 
 	if a.DeleteOnAck {
-		ackQuery = fmt.Sprintf(`DELETE FROM %s WHERE "offset" = $1`, table)
+		ackQuery = fmt.Sprintf(`DELETE FROM %s WHERE "offset" <= $1`, table)
 	} else {
-		ackQuery = fmt.Sprintf(`UPDATE %s SET acked = TRUE WHERE "offset" = $1`, table)
+		ackQuery = fmt.Sprintf(`UPDATE %s SET acked = TRUE WHERE "offset" <= $1`, table)
 	}
 
 	return Query{ackQuery, []any{row.Offset}}
