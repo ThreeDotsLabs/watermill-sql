@@ -88,7 +88,7 @@ func (s ConditionalPostgreSQLSchema) SelectQuery(topic string, consumerGroup str
 		SELECT "offset", uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
 		` + where + `
 		ORDER BY
-			offset ASC
+			"offset" ASC
 		LIMIT ` + fmt.Sprintf("%d", s.batchSize()) + `
 		FOR UPDATE`
 
