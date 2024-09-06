@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -51,7 +52,7 @@ func (s ConditionalPostgreSQLSchema) InsertQuery(topic string, msgs message.Mess
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata) VALUES %s`,
 		s.MessagesTable(topic),
-		defaultInsertMarkers(len(msgs)),
+		conditionalInsertMarkers(len(msgs)),
 	)
 
 	args, err := defaultInsertArgs(msgs)
@@ -60,6 +61,18 @@ func (s ConditionalPostgreSQLSchema) InsertQuery(topic string, msgs message.Mess
 	}
 
 	return Query{insertQuery, args}, nil
+}
+
+func conditionalInsertMarkers(count int) string {
+	result := strings.Builder{}
+
+	index := 1
+	for i := 0; i < count; i++ {
+		result.WriteString(fmt.Sprintf("($%d,$%d,$%d),", index, index+1, index+2))
+		index += 3
+	}
+
+	return strings.TrimRight(result.String(), ",")
 }
 
 func (s ConditionalPostgreSQLSchema) batchSize() int {
