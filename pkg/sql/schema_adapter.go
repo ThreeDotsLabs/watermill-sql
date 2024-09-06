@@ -3,9 +3,9 @@ package sql
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/pkg/errors"
 )
 
 // SchemaAdapter produces the SQL queries and arguments appropriately for a specific schema and dialect
@@ -49,7 +49,7 @@ func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
 	for _, msg := range msgs {
 		metadata, err := json.Marshal(msg.Metadata)
 		if err != nil {
-			return nil, errors.Wrapf(err, "could not marshal metadata into JSON for message %s", msg.UUID)
+			return nil, fmt.Errorf("could not marshal metadata into JSON for message %s: %w", msg.UUID, err)
 		}
 
 		args = append(args, msg.UUID, []byte(msg.Payload), metadata)
