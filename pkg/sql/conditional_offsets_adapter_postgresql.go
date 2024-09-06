@@ -27,7 +27,7 @@ func (a ConditionalPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, row R
 
 	var ackQuery string
 
-	table := a.GenerateMessagesTableName(topic)
+	table := a.MessagesTable(topic)
 
 	if a.DeleteOnAck {
 		ackQuery = fmt.Sprintf("DELETE FROM %s WHERE offset = $1", table)
