@@ -97,9 +97,8 @@ func (s ConditionalPostgreSQLSchema) SelectQuery(topic string, consumerGroup str
 
 func (s ConditionalPostgreSQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
 	r := Row{}
-	var transactionID int64
 
-	err := row.Scan(&r.Offset, &transactionID, &r.UUID, &r.Payload, &r.Metadata)
+	err := row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {
 		return Row{}, fmt.Errorf("could not scan message row: %w", err)
 	}
