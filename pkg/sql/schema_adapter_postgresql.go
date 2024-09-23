@@ -26,7 +26,7 @@ type DefaultPostgreSQLSchema struct {
 func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query {
 	createMessagesTable := ` 
 		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
-			"offset" SERIAL,
+			"offset" BIGSERIAL,
 			"uuid" VARCHAR(36) NOT NULL,
 			"created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			"payload" JSON DEFAULT NULL,
