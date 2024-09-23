@@ -24,6 +24,12 @@ type DefaultPostgreSQLSchema struct {
 }
 
 func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query {
+	// theoretically this primary key allows duplicate offsets for same transaction_id
+	// but in practice it should not happen with SERIAL, so we can keep one index and make it more
+	// storage efficient
+	//
+	// it's intended that transaction_id is first in the index, because we are using it alone
+	// in the WHERE clause
 	createMessagesTable := ` 
 		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
 			"offset" BIGSERIAL,
