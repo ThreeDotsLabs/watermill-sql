@@ -14,6 +14,10 @@ type DefaultPostgreSQLSchema struct {
 	// GenerateMessagesTableName may be used to override how the messages table name is generated.
 	GenerateMessagesTableName func(topic string) string
 
+	// GeneratePayloadType is the type of the payload column in the messages table.
+	// By default, it's JSON. If your payload is not JSON, you can use BYTEA.
+	GeneratePayloadType func(topic string) string
+
 	// SubscribeBatchSize is the number of messages to be queried at once.
 	//
 	// Higher value, increases a chance of message re-delivery in case of crash or networking issues.
@@ -35,7 +39,7 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query
 			"offset" BIGSERIAL,
 			"uuid" VARCHAR(36) NOT NULL,
 			"created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			"payload" JSON DEFAULT NULL,
+			"payload" ` + s.PayloadColumnType(topic) + ` DEFAULT NULL,
 			"metadata" JSON DEFAULT NULL,
 			"transaction_id" xid8 NOT NULL,
 			PRIMARY KEY ("transaction_id", "offset")
@@ -196,6 +200,14 @@ func (s DefaultPostgreSQLSchema) MessagesTable(topic string) string {
 		return s.GenerateMessagesTableName(topic)
 	}
 	return fmt.Sprintf(`"watermill_%s"`, topic)
+}
+
+func (s DefaultPostgreSQLSchema) PayloadColumnType(topic string) string {
+	if s.GeneratePayloadType == nil {
+		return "JSON"
+	}
+
+	return s.GeneratePayloadType(topic)
 }
 
 func (s DefaultPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
