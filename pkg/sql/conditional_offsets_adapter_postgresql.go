@@ -1,6 +1,9 @@
 package sql
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/lib/pq"
+)
 
 // ConditionalPostgreSQLOffsetsAdapter is an OffsetsAdapter for the ConditionalPostgreSQLSchema.
 type ConditionalPostgreSQLOffsetsAdapter struct {
@@ -40,7 +43,8 @@ func (a ConditionalPostgreSQLOffsetsAdapter) AckMessageQuery(params AckMessageQu
 		offsets[i] = row.Offset
 	}
 
-	return Query{ackQuery, []any{offsets}}
+	// TODO do we need to stick with pq?
+	return Query{ackQuery, []any{pq.Array(offsets)}}
 }
 
 func (a ConditionalPostgreSQLOffsetsAdapter) MessagesTable(topic string) string {
