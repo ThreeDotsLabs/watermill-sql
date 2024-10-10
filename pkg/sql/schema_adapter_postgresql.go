@@ -39,14 +39,14 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query
 	return []Query{{Query: createMessagesTable}}
 }
 
-func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages) (Query, error) {
+func (s DefaultPostgreSQLSchema) InsertQuery(params InsertQueryParams) (Query, error) {
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata, transaction_id) VALUES %s`,
-		s.MessagesTable(topic),
-		defaultInsertMarkers(len(msgs)),
+		s.MessagesTable(params.Topic),
+		defaultInsertMarkers(len(params.Msgs)),
 	)
 
-	args, err := defaultInsertArgs(msgs)
+	args, err := defaultInsertArgs(params.Msgs)
 	if err != nil {
 		return Query{}, err
 	}
@@ -74,16 +74,21 @@ func (s DefaultPostgreSQLSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) Query {
+func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query {
 	// Query inspired by https://event-driven.io/en/ordering_in_postgres_outbox/
 
-	nextOffsetQuery := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
+	nextOffsetParams := NextOffsetQueryParams{
+		Topic:         params.Topic,
+		ConsumerGroup: params.ConsumerGroup,
+	}
+
+	nextOffsetQuery := params.OffsetsAdapter.NextOffsetQuery(nextOffsetParams)
 	selectQuery := `
 		WITH last_processed AS (
 			` + nextOffsetQuery.Query + `
 		)
 
-		SELECT "offset", transaction_id, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
+		SELECT "offset", transaction_id, uuid, payload, metadata FROM ` + s.MessagesTable(params.Topic) + `
 
 		WHERE 
 		(

@@ -32,22 +32,22 @@ func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string)
 	}
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) Query {
+func (a DefaultPostgreSQLOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams) Query {
 	return Query{
 		Query: `
 			SELECT 
     			offset_acked, 
     			last_processed_transaction_id 
-			FROM ` + a.MessagesOffsetsTable(topic) + ` 
+			FROM ` + a.MessagesOffsetsTable(params.Topic) + ` 
 			WHERE consumer_group=$1 
 			FOR UPDATE
 		`,
-		Args: []any{consumerGroup},
+		Args: []any{params.ConsumerGroup},
 	}
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, row Row, consumerGroup string) Query {
-	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + `(offset_acked, last_processed_transaction_id, consumer_group) 
+func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(params AckMessageQueryParams) Query {
+	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(params.Topic) + `(offset_acked, last_processed_transaction_id, consumer_group) 
 	VALUES 
 		($1, $2, $3) 
 	ON CONFLICT 
@@ -56,7 +56,7 @@ func (a DefaultPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, row Row, 
 		offset_acked = excluded.offset_acked,
 		last_processed_transaction_id = excluded.last_processed_transaction_id`
 
-	return Query{ackQuery, []any{row.Offset, row.ExtraData["transaction_id"], consumerGroup}}
+	return Query{ackQuery, []any{params.LastRow.Offset, params.LastRow.ExtraData["transaction_id"], params.ConsumerGroup}}
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) MessagesOffsetsTable(topic string) string {
@@ -66,7 +66,7 @@ func (a DefaultPostgreSQLOffsetsAdapter) MessagesOffsetsTable(topic string) stri
 	return fmt.Sprintf(`"watermill_offsets_%s"`, topic)
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) ConsumedMessageQuery(topic string, row Row, consumerGroup string, consumerULID []byte) Query {
+func (a DefaultPostgreSQLOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQueryParams) Query {
 	return Query{}
 }
 

@@ -16,26 +16,31 @@ func (a ConditionalPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic str
 	return []Query{}
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) Query {
+func (a ConditionalPostgreSQLOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams) Query {
 	return Query{}
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) AckMessageQuery(topic string, row Row, consumerGroup string) Query {
-	if consumerGroup != "" {
+func (a ConditionalPostgreSQLOffsetsAdapter) AckMessageQuery(params AckMessageQueryParams) Query {
+	if params.ConsumerGroup != "" {
 		panic("consumer groups are not supported in ConditionalPostgreSQLOffsetsAdapter")
 	}
 
 	var ackQuery string
 
-	table := a.MessagesTable(topic)
+	table := a.MessagesTable(params.Topic)
 
 	if a.DeleteOnAck {
-		ackQuery = fmt.Sprintf(`DELETE FROM %s WHERE "offset" <= $1`, table)
+		ackQuery = fmt.Sprintf(`DELETE FROM %s WHERE "offset" = ANY($1)`, table)
 	} else {
-		ackQuery = fmt.Sprintf(`UPDATE %s SET acked = TRUE WHERE "offset" <= $1`, table)
+		ackQuery = fmt.Sprintf(`UPDATE %s SET acked = TRUE WHERE "offset" = ANY($1)`, table)
 	}
 
-	return Query{ackQuery, []any{row.Offset}}
+	offsets := make([]int64, len(params.Rows))
+	for i, row := range params.Rows {
+		offsets[i] = row.Offset
+	}
+
+	return Query{ackQuery, []any{offsets}}
 }
 
 func (a ConditionalPostgreSQLOffsetsAdapter) MessagesTable(topic string) string {
@@ -45,7 +50,7 @@ func (a ConditionalPostgreSQLOffsetsAdapter) MessagesTable(topic string) string 
 	return fmt.Sprintf(`"watermill_%s"`, topic)
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) ConsumedMessageQuery(topic string, row Row, consumerGroup string, consumerULID []byte) Query {
+func (a ConditionalPostgreSQLOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQueryParams) Query {
 	return Query{}
 }
 

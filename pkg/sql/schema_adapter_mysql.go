@@ -62,14 +62,14 @@ func (s DefaultMySQLSchema) SchemaInitializingQueries(topic string) []Query {
 	return []Query{{Query: createMessagesTable}}
 }
 
-func (s DefaultMySQLSchema) InsertQuery(topic string, msgs message.Messages) (Query, error) {
+func (s DefaultMySQLSchema) InsertQuery(params InsertQueryParams) (Query, error) {
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata) VALUES %s`,
-		s.MessagesTable(topic),
-		strings.TrimRight(strings.Repeat(`(?,?,?),`, len(msgs)), ","),
+		s.MessagesTable(params.Topic),
+		strings.TrimRight(strings.Repeat(`(?,?,?),`, len(params.Msgs)), ","),
 	)
 
-	args, err := defaultInsertArgs(msgs)
+	args, err := defaultInsertArgs(params.Msgs)
 	if err != nil {
 		return Query{}, err
 	}
@@ -85,12 +85,16 @@ func (s DefaultMySQLSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s DefaultMySQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) Query {
-	nextOffsetQuery := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
+func (s DefaultMySQLSchema) SelectQuery(params SelectQueryParams) Query {
+	nextOffsetParams := NextOffsetQueryParams{
+		Topic:         params.Topic,
+		ConsumerGroup: params.ConsumerGroup,
+	}
+	nextOffsetQuery := params.OffsetsAdapter.NextOffsetQuery(nextOffsetParams)
 
 	// It's important to wrap offset with "`" for MariaDB.
 	// See https://github.com/ThreeDotsLabs/watermill/issues/377
-	selectQuery := "SELECT `offset`, `uuid`, `payload`, `metadata` FROM " + s.MessagesTable(topic) +
+	selectQuery := "SELECT `offset`, `uuid`, `payload`, `metadata` FROM " + s.MessagesTable(params.Topic) +
 		" WHERE `offset` > (" + nextOffsetQuery.Query + ") ORDER BY `offset` ASC" +
 		` LIMIT ` + fmt.Sprintf("%d", s.batchSize())
 

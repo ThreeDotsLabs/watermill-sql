@@ -48,14 +48,14 @@ func (s ConditionalPostgreSQLSchema) SchemaInitializingQueries(topic string) []Q
 	return []Query{{Query: createMessagesTable}}
 }
 
-func (s ConditionalPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages) (Query, error) {
+func (s ConditionalPostgreSQLSchema) InsertQuery(params InsertQueryParams) (Query, error) {
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata) VALUES %s`,
-		s.MessagesTable(topic),
-		conditionalInsertMarkers(len(msgs)),
+		s.MessagesTable(params.Topic),
+		conditionalInsertMarkers(len(params.Msgs)),
 	)
 
-	args, err := defaultInsertArgs(msgs)
+	args, err := defaultInsertArgs(params.Msgs)
 	if err != nil {
 		return Query{}, err
 	}
@@ -83,22 +83,22 @@ func (s ConditionalPostgreSQLSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s ConditionalPostgreSQLSchema) SelectQuery(topic string, consumerGroup string, _ OffsetsAdapter) Query {
-	if consumerGroup != "" {
+func (s ConditionalPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query {
+	if params.ConsumerGroup != "" {
 		panic("consumer groups are not supported in ConditionalPostgreSQLSchema")
 	}
 
-	params := GenerateWhereClauseParams{
-		Topic: topic,
+	whereParams := GenerateWhereClauseParams{
+		Topic: params.Topic,
 	}
 
-	where, args := s.GenerateWhereClause(params)
+	where, args := s.GenerateWhereClause(whereParams)
 	if where != "" {
 		where = "AND " + where
 	}
 
 	selectQuery := `
-		SELECT "offset", uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
+		SELECT "offset", uuid, payload, metadata FROM ` + s.MessagesTable(params.Topic) + `
 		WHERE acked = false ` + where + `
 		ORDER BY
 			"offset" ASC

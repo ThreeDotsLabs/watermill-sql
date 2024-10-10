@@ -8,15 +8,26 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
+type InsertQueryParams struct {
+	Topic string
+	Msgs  message.Messages
+}
+
+type SelectQueryParams struct {
+	Topic          string
+	ConsumerGroup  string
+	OffsetsAdapter OffsetsAdapter
+}
+
 // SchemaAdapter produces the SQL queries and arguments appropriately for a specific schema and dialect
 // It also transforms sql.Rows into Watermill messages.
 type SchemaAdapter interface {
 	// InsertQuery returns the SQL query and arguments that will insert the Watermill message into the SQL storage.
-	InsertQuery(topic string, msgs message.Messages) (Query, error)
+	InsertQuery(params InsertQueryParams) (Query, error)
 
 	// SelectQuery returns the SQL query and arguments
 	// that returns the next unread message for a given consumer group.
-	SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) Query
+	SelectQuery(params SelectQueryParams) Query
 
 	// UnmarshalMessage transforms the Row obtained SelectQuery a Watermill message.
 	// It also returns the offset of the last read message, for the purpose of acking.

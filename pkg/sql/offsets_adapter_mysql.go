@@ -32,21 +32,21 @@ func (a DefaultMySQLOffsetsAdapter) SchemaInitializingQueries(topic string) []Qu
 	}
 }
 
-func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(topic string, row Row, consumerGroup string) Query {
-	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (offset_consumed, offset_acked, consumer_group)
+func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(params AckMessageQueryParams) Query {
+	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(params.Topic) + ` (offset_consumed, offset_acked, consumer_group)
 		VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE offset_consumed=VALUES(offset_consumed), offset_acked=VALUES(offset_acked)`
 
-	return Query{ackQuery, []any{row.Offset, row.Offset, consumerGroup}}
+	return Query{ackQuery, []any{params.LastRow.Offset, params.LastRow.Offset, params.ConsumerGroup}}
 }
 
-func (a DefaultMySQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) Query {
+func (a DefaultMySQLOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams) Query {
 	return Query{
 		Query: `SELECT COALESCE(
 				(SELECT offset_acked
-				 FROM ` + a.MessagesOffsetsTable(topic) + `
+				 FROM ` + a.MessagesOffsetsTable(params.Topic) + `
 				 WHERE consumer_group=? FOR UPDATE
 				), 0)`,
-		Args: []any{consumerGroup},
+		Args: []any{params.ConsumerGroup},
 	}
 }
 
@@ -57,11 +57,11 @@ func (a DefaultMySQLOffsetsAdapter) MessagesOffsetsTable(topic string) string {
 	return fmt.Sprintf("`watermill_offsets_%s`", topic)
 }
 
-func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(topic string, row Row, consumerGroup string, consumerULID []byte) Query {
+func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQueryParams) Query {
 	// offset_consumed is not queried anywhere, it's used only to detect race conditions with NextOffsetQuery.
-	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (offset_consumed, consumer_group)
+	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(params.Topic) + ` (offset_consumed, consumer_group)
 		VALUES (?, ?) ON DUPLICATE KEY UPDATE offset_consumed=VALUES(offset_consumed)`
-	return Query{ackQuery, []interface{}{row.Offset, consumerGroup}}
+	return Query{ackQuery, []interface{}{params.Row.Offset, params.ConsumerGroup}}
 }
 
 func (a DefaultMySQLOffsetsAdapter) BeforeSubscribingQueries(topic, consumerGroup string) []Query {
