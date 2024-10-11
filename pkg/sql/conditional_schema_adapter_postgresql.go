@@ -13,7 +13,7 @@ type GenerateWhereClauseParams struct {
 	Topic string
 }
 
-// ConditionalPostgreSQLSchema is a schema adapter for PostgreSQL that allows to filter messages by some condition.
+// ConditionalPostgreSQLSchema is a schema adapter for PostgreSQL that allows filtering messages by some condition.
 // It DOES NOT support consumer groups.
 type ConditionalPostgreSQLSchema struct {
 	// GenerateWhereClause is a function that returns a where clause and arguments for the SELECT query.

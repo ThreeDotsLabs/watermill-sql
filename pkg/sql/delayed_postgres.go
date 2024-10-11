@@ -10,8 +10,9 @@ import (
 )
 
 type DelayedPostgresPublisherConfig struct {
-	DelayPublisherConfig delay.PublisherConfig
-	Logger               watermill.LoggerAdapter
+	DelayPublisherConfig    delay.PublisherConfig
+	OverridePublisherConfig func(config *PublisherConfig) error
+	Logger                  watermill.LoggerAdapter
 }
 
 func (c *DelayedPostgresPublisherConfig) setDefaults() {
@@ -20,15 +21,27 @@ func (c *DelayedPostgresPublisherConfig) setDefaults() {
 	}
 }
 
+// NewDelayedPostgresPublisher creates a new Publisher that stores messages in PostgreSQL with a delay.
+// The delay can be set per message with the Watermill's components/delay metadata.
 func NewDelayedPostgresPublisher(db *sql.DB, config DelayedPostgresPublisherConfig) (message.Publisher, error) {
 	config.setDefaults()
+
+	publisherConfig := PublisherConfig{
+		SchemaAdapter:        ConditionalPostgreSQLSchema{},
+		AutoInitializeSchema: true,
+	}
+
+	if config.OverridePublisherConfig != nil {
+		err := config.OverridePublisherConfig(&publisherConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	var publisher message.Publisher
 	var err error
 
-	publisher, err = NewPublisher(db, PublisherConfig{
-		SchemaAdapter: ConditionalPostgreSQLSchema{},
-	}, config.Logger)
+	publisher, err = NewPublisher(db, publisherConfig, config.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +55,9 @@ func NewDelayedPostgresPublisher(db *sql.DB, config DelayedPostgresPublisherConf
 }
 
 type DelayedPostgresSubscriberConfig struct {
-	Logger watermill.LoggerAdapter
+	OverrideSubscriberConfig func(config *SubscriberConfig) error
+	DeleteOnAck              bool
+	Logger                   watermill.LoggerAdapter
 }
 
 func (c *DelayedPostgresSubscriberConfig) setDefaults() {
@@ -51,23 +66,50 @@ func (c *DelayedPostgresSubscriberConfig) setDefaults() {
 	}
 }
 
+// NewDelayedPostgresSubscriber creates a new Subscriber that reads messages from PostgreSQL with a delay.
+// The delay can be set per message with the Watermill's components/delay metadata.
 func NewDelayedPostgresSubscriber(db *sql.DB, config DelayedPostgresSubscriberConfig) (message.Subscriber, error) {
-	sub, err := NewSubscriber(db, SubscriberConfig{
-		SchemaAdapter: ConditionalPostgreSQLSchema{
+	schemaAdapter := delayedPostgreSQLSchemaAdapter{
+		ConditionalPostgreSQLSchema: ConditionalPostgreSQLSchema{
 			GenerateWhereClause: func(params GenerateWhereClauseParams) (string, []any) {
 				return fmt.Sprintf("(metadata->>'%v')::timestamptz < NOW() AT TIME ZONE 'UTC'", delay.DelayedUntilKey), nil
 			},
 		},
-		// TODO configurable?
+	}
+
+	subscriberConfig := SubscriberConfig{
+		SchemaAdapter: schemaAdapter,
 		OffsetsAdapter: ConditionalPostgreSQLOffsetsAdapter{
-			DeleteOnAck: true,
+			DeleteOnAck: config.DeleteOnAck,
 		},
-		// TODO configurable?
 		InitializeSchema: true,
-	}, config.Logger)
+	}
+
+	if config.OverrideSubscriberConfig != nil {
+		err := config.OverrideSubscriberConfig(&subscriberConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	sub, err := NewSubscriber(db, subscriberConfig, config.Logger)
 	if err != nil {
 		return nil, err
 	}
 
 	return sub, nil
+}
+
+type delayedPostgreSQLSchemaAdapter struct {
+	ConditionalPostgreSQLSchema
+}
+
+func (a delayedPostgreSQLSchemaAdapter) SchemaInitializingQueries(topic string) []Query {
+	queries := a.ConditionalPostgreSQLSchema.SchemaInitializingQueries(topic)
+
+	queries = append(queries, Query{
+		Query: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_delayed_until_idx ON %s (metadata->>'%s')`, topic, topic, delay.DelayedUntilKey),
+	})
+
+	return queries
 }
