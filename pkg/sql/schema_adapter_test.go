@@ -2,7 +2,6 @@ package sql_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -103,42 +102,4 @@ func testOneMessage(t *testing.T, publisher message.Publisher, subscriber messag
 	case <-time.After(time.Second * 5):
 		t.Error("Didn't receive any messages")
 	}
-}
-
-// testMySQLSchema makes the following changes to DefaultMySQLSchema to comply with tests:
-// - uuid is a VARCHAR(255) instead of VARCHAR(36); some UUIDs in tests are bigger and we don't care for storage use
-// - payload is a VARBINARY(255) instead of JSON; tests don't presuppose JSON-marshallable payloads
-type testMySQLSchema struct {
-	sql.DefaultMySQLSchema
-}
-
-func (s *testMySQLSchema) SchemaInitializingQueries(topic string) []sql.Query {
-	createMessagesTable := strings.Join([]string{
-		"CREATE TABLE IF NOT EXISTS " + s.MessagesTable(topic) + " (",
-		"`offset` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,",
-		"`uuid` VARCHAR(255) NOT NULL,",
-		"`payload` VARBINARY(255) DEFAULT NULL,",
-		"`metadata` JSON DEFAULT NULL",
-		");",
-	}, "\n")
-
-	return []sql.Query{{Query: createMessagesTable}}
-}
-
-type testPostgreSQLSchema struct {
-	sql.DefaultPostgreSQLSchema
-}
-
-func (s *testPostgreSQLSchema) SchemaInitializingQueries(topic string) []sql.Query {
-	createMessagesTable := `
-		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
-		"offset" SERIAL,
-		"uuid" VARCHAR(255) NOT NULL,
-		"payload" bytea DEFAULT NULL,
-		"metadata" JSON DEFAULT NULL,
-		"transaction_id" xid8 NOT NULL
-	);
-	`
-
-	return []sql.Query{{Query: createMessagesTable}}
 }
