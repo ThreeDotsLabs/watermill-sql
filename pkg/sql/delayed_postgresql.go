@@ -9,21 +9,21 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-type DelayedPostgresPublisherConfig struct {
+type DelayedPostgreSQLPublisherConfig struct {
 	DelayPublisherConfig    delay.PublisherConfig
 	OverridePublisherConfig func(config *PublisherConfig) error
 	Logger                  watermill.LoggerAdapter
 }
 
-func (c *DelayedPostgresPublisherConfig) setDefaults() {
+func (c *DelayedPostgreSQLPublisherConfig) setDefaults() {
 	if c.Logger == nil {
 		c.Logger = watermill.NopLogger{}
 	}
 }
 
-// NewDelayedPostgresPublisher creates a new Publisher that stores messages in PostgreSQL with a delay.
+// NewDelayedPostgreSQLPublisher creates a new Publisher that stores messages in PostgreSQL with a delay.
 // The delay can be set per message with the Watermill's components/delay metadata.
-func NewDelayedPostgresPublisher(db *sql.DB, config DelayedPostgresPublisherConfig) (message.Publisher, error) {
+func NewDelayedPostgreSQLPublisher(db *sql.DB, config DelayedPostgreSQLPublisherConfig) (message.Publisher, error) {
 	config.setDefaults()
 
 	publisherConfig := PublisherConfig{
@@ -54,21 +54,21 @@ func NewDelayedPostgresPublisher(db *sql.DB, config DelayedPostgresPublisherConf
 	return publisher, nil
 }
 
-type DelayedPostgresSubscriberConfig struct {
+type DelayedPostgreSQLSubscriberConfig struct {
 	OverrideSubscriberConfig func(config *SubscriberConfig) error
 	DeleteOnAck              bool
 	Logger                   watermill.LoggerAdapter
 }
 
-func (c *DelayedPostgresSubscriberConfig) setDefaults() {
+func (c *DelayedPostgreSQLSubscriberConfig) setDefaults() {
 	if c.Logger == nil {
 		c.Logger = watermill.NopLogger{}
 	}
 }
 
-// NewDelayedPostgresSubscriber creates a new Subscriber that reads messages from PostgreSQL with a delay.
+// NewDelayedPostgreSQLSubscriber creates a new Subscriber that reads messages from PostgreSQL with a delay.
 // The delay can be set per message with the Watermill's components/delay metadata.
-func NewDelayedPostgresSubscriber(db *sql.DB, config DelayedPostgresSubscriberConfig) (message.Subscriber, error) {
+func NewDelayedPostgreSQLSubscriber(db *sql.DB, config DelayedPostgreSQLSubscriberConfig) (message.Subscriber, error) {
 	schemaAdapter := delayedPostgreSQLSchemaAdapter{
 		ConditionalPostgreSQLSchema: ConditionalPostgreSQLSchema{
 			GenerateWhereClause: func(params GenerateWhereClauseParams) (string, []any) {
