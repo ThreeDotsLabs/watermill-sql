@@ -104,11 +104,11 @@ type delayedPostgreSQLSchemaAdapter struct {
 	ConditionalPostgreSQLSchema
 }
 
-func (a delayedPostgreSQLSchemaAdapter) SchemaInitializingQueries(topic string) []Query {
-	queries := a.ConditionalPostgreSQLSchema.SchemaInitializingQueries(topic)
+func (a delayedPostgreSQLSchemaAdapter) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
+	queries := a.ConditionalPostgreSQLSchema.SchemaInitializingQueries(params)
 
 	queries = append(queries, Query{
-		Query: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_delayed_until_idx ON %s (metadata->>'%s')`, topic, topic, delay.DelayedUntilKey),
+		Query: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_delayed_until_idx ON %s (metadata->>'%s')`, params.Topic, params.Topic, delay.DelayedUntilKey),
 	})
 
 	return queries

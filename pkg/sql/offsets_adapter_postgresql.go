@@ -18,11 +18,11 @@ type DefaultPostgreSQLOffsetsAdapter struct {
 	GenerateMessagesOffsetsTableName func(topic string) string
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string) []Query {
+func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) []Query {
 	return []Query{
 		{
 			Query: `
-				CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
+				CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(params.Topic) + ` (
 				consumer_group VARCHAR(255) NOT NULL,
 				offset_acked BIGINT,
 				last_processed_transaction_id xid8 NOT NULL,
@@ -70,7 +70,7 @@ func (a DefaultPostgreSQLOffsetsAdapter) ConsumedMessageQuery(params ConsumedMes
 	return Query{}
 }
 
-func (a DefaultPostgreSQLOffsetsAdapter) BeforeSubscribingQueries(topic string, consumerGroup string) []Query {
+func (a DefaultPostgreSQLOffsetsAdapter) BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) []Query {
 	return []Query{
 		{
 			// It's required for exactly-once-delivery guarantee.
@@ -81,8 +81,8 @@ func (a DefaultPostgreSQLOffsetsAdapter) BeforeSubscribingQueries(topic string, 
 			//
 			// If "zero offsets" won't be present and multiple concurrent subscribers will try to consume them it
 			// will lead to multiple delivery (because offsets are not locked).
-			Query: `INSERT INTO ` + a.MessagesOffsetsTable(topic) + ` (consumer_group, offset_acked, last_processed_transaction_id) VALUES ($1, 0, '0') ON CONFLICT DO NOTHING;`,
-			Args:  []any{consumerGroup},
+			Query: `INSERT INTO ` + a.MessagesOffsetsTable(params.Topic) + ` (consumer_group, offset_acked, last_processed_transaction_id) VALUES ($1, 0, '0') ON CONFLICT DO NOTHING;`,
+			Args:  []any{params.ConsumerGroup},
 		},
 	}
 }

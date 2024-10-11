@@ -16,7 +16,7 @@ import (
 //		DefaultMySQLSchema
 //	}
 //
-//	func (m MyMessagesSchema) SchemaInitializingQueries(topic string) []string {
+//	func (m MyMessagesSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []string {
 //		createMessagesTable := strings.Join([]string{
 //			"CREATE TABLE IF NOT EXISTS " + m.MessagesTable(topic) + " (",
 //			"`offset` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,",
@@ -30,7 +30,7 @@ import (
 //		return []string{createMessagesTable}
 //	}
 //
-//	func (m MyMessagesSchema) UnmarshalMessage(row *sql.Row) (offset int, msg *message.Message, err error) {
+//	func (m MyMessagesSchema) UnmarshalMessage(params UnmarshalMessageParams) (offset int, msg *message.Message, err error) {
 //		// ...
 //
 // For debugging your custom schema, we recommend to inject logger with trace logging level
@@ -48,9 +48,9 @@ type DefaultMySQLSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s DefaultMySQLSchema) SchemaInitializingQueries(topic string) []Query {
+func (s DefaultMySQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
 	createMessagesTable := strings.Join([]string{
-		"CREATE TABLE IF NOT EXISTS " + s.MessagesTable(topic) + " (",
+		"CREATE TABLE IF NOT EXISTS " + s.MessagesTable(params.Topic) + " (",
 		"`offset` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,",
 		"`uuid` VARCHAR(36) NOT NULL,",
 		"`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,",
@@ -101,9 +101,9 @@ func (s DefaultMySQLSchema) SelectQuery(params SelectQueryParams) Query {
 	return Query{Query: selectQuery, Args: nextOffsetQuery.Args}
 }
 
-func (s DefaultMySQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
+func (s DefaultMySQLSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {
 	r := Row{}
-	err := row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
+	err := params.Row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {
 		return Row{}, fmt.Errorf("could not scan message row: %w", err)
 	}

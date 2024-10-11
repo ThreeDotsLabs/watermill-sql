@@ -18,11 +18,11 @@ type DefaultMySQLOffsetsAdapter struct {
 	GenerateMessagesOffsetsTableName func(topic string) string
 }
 
-func (a DefaultMySQLOffsetsAdapter) SchemaInitializingQueries(topic string) []Query {
+func (a DefaultMySQLOffsetsAdapter) SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) []Query {
 	return []Query{
 		{
 			Query: `
-				CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
+				CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(params.Topic) + ` (
 				consumer_group VARCHAR(255) NOT NULL,
 				offset_acked BIGINT,
 				offset_consumed BIGINT NOT NULL,
@@ -64,6 +64,6 @@ func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQ
 	return Query{ackQuery, []interface{}{params.Row.Offset, params.ConsumerGroup}}
 }
 
-func (a DefaultMySQLOffsetsAdapter) BeforeSubscribingQueries(topic, consumerGroup string) []Query {
+func (a DefaultMySQLOffsetsAdapter) BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) []Query {
 	return nil
 }

@@ -19,6 +19,14 @@ type SelectQueryParams struct {
 	OffsetsAdapter OffsetsAdapter
 }
 
+type UnmarshalMessageParams struct {
+	Row Scanner
+}
+
+type SchemaInitializingQueriesParams struct {
+	Topic string
+}
+
 // SchemaAdapter produces the SQL queries and arguments appropriately for a specific schema and dialect
 // It also transforms sql.Rows into Watermill messages.
 type SchemaAdapter interface {
@@ -31,11 +39,11 @@ type SchemaAdapter interface {
 
 	// UnmarshalMessage transforms the Row obtained SelectQuery a Watermill message.
 	// It also returns the offset of the last read message, for the purpose of acking.
-	UnmarshalMessage(row Scanner) (Row, error)
+	UnmarshalMessage(params UnmarshalMessageParams) (Row, error)
 
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)
 	// that the appropriate tables exist to write messages to the given topic.
-	SchemaInitializingQueries(topic string) []Query
+	SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query
 
 	// SubscribeIsolationLevel returns the isolation level that will be used when subscribing.
 	SubscribeIsolationLevel() sql.IsolationLevel

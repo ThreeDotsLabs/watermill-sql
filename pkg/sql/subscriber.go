@@ -180,7 +180,10 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 		}
 	}
 
-	bsq := s.config.OffsetsAdapter.BeforeSubscribingQueries(topic, s.config.ConsumerGroup)
+	bsq := s.config.OffsetsAdapter.BeforeSubscribingQueries(BeforeSubscribingQueriesParams{
+		Topic:         topic,
+		ConsumerGroup: s.config.ConsumerGroup,
+	})
 
 	if len(bsq) >= 1 {
 		err := runInTx(ctx, s.db, func(ctx context.Context, tx *sql.Tx) error {
@@ -310,7 +313,9 @@ func (s *Subscriber) query(
 	messageRows := make([]Row, 0)
 
 	for rows.Next() {
-		row, err := s.config.SchemaAdapter.UnmarshalMessage(rows)
+		row, err := s.config.SchemaAdapter.UnmarshalMessage(UnmarshalMessageParams{
+			Row: rows,
+		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return true, nil
 		} else if err != nil {

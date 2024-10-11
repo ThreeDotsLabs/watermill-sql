@@ -33,9 +33,9 @@ type ConditionalPostgreSQLSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s ConditionalPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query {
+func (s ConditionalPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
 	createMessagesTable := ` 
-		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
+		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(params.Topic) + ` (
 			"offset" SERIAL PRIMARY KEY,
 			"uuid" VARCHAR(36) NOT NULL,
 			"payload" JSON DEFAULT NULL,
@@ -108,10 +108,10 @@ func (s ConditionalPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query
 	return Query{selectQuery, args}
 }
 
-func (s ConditionalPostgreSQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
+func (s ConditionalPostgreSQLSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {
 	r := Row{}
 
-	err := row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
+	err := params.Row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {
 		return Row{}, fmt.Errorf("could not scan message row: %w", err)
 	}

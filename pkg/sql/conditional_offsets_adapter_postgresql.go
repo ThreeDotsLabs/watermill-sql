@@ -15,7 +15,7 @@ type ConditionalPostgreSQLOffsetsAdapter struct {
 	GenerateMessagesTableName func(topic string) string
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string) []Query {
+func (a ConditionalPostgreSQLOffsetsAdapter) SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) []Query {
 	return []Query{}
 }
 
@@ -58,6 +58,6 @@ func (a ConditionalPostgreSQLOffsetsAdapter) ConsumedMessageQuery(params Consume
 	return Query{}
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) BeforeSubscribingQueries(topic string, consumerGroup string) []Query {
+func (a ConditionalPostgreSQLOffsetsAdapter) BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) []Query {
 	return []Query{}
 }

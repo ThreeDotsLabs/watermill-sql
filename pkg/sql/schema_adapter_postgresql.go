@@ -23,9 +23,9 @@ type DefaultPostgreSQLSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query {
+func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
 	createMessagesTable := ` 
-		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
+		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(params.Topic) + ` (
 			"offset" SERIAL,
 			"uuid" VARCHAR(36) NOT NULL,
 			"created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -110,11 +110,11 @@ func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query {
 	return Query{selectQuery, nextOffsetQuery.Args}
 }
 
-func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
+func (s DefaultPostgreSQLSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {
 	r := Row{}
 	var transactionID int64
 
-	err := row.Scan(&r.Offset, &transactionID, &r.UUID, &r.Payload, &r.Metadata)
+	err := params.Row.Scan(&r.Offset, &transactionID, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {
 		return Row{}, fmt.Errorf("could not scan message row: %w", err)
 	}

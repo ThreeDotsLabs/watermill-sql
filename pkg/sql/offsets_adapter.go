@@ -19,6 +19,15 @@ type NextOffsetQueryParams struct {
 	ConsumerGroup string
 }
 
+type OffsetsSchemaInitializingQueriesParams struct {
+	Topic string
+}
+
+type BeforeSubscribingQueriesParams struct {
+	Topic         string
+	ConsumerGroup string
+}
+
 type OffsetsAdapter interface {
 	// AckMessageQuery the SQL query and arguments that will mark a message as read for a given consumer group.
 	AckMessageQuery(params AckMessageQueryParams) Query
@@ -34,9 +43,9 @@ type OffsetsAdapter interface {
 
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)
 	// that the appropriate tables exist to write messages to the given topic.
-	SchemaInitializingQueries(topic string) []Query
+	SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) []Query
 
 	// BeforeSubscribingQueries returns queries which will be executed before subscribing to a topic.
 	// All queries will be executed in a single transaction.
-	BeforeSubscribingQueries(topic string, consumerGroup string) []Query
+	BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) []Query
 }
