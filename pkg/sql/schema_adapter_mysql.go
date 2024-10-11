@@ -58,7 +58,7 @@ func (s DefaultMySQLSchema) SchemaInitializingQueries(params SchemaInitializingQ
 		"`offset` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,",
 		"`uuid` VARCHAR(36) NOT NULL,",
 		"`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,",
-		"`payload` " + s.PayloadColumnType(topic) + " DEFAULT NULL,",
+		"`payload` " + s.PayloadColumnType(params.Topic) + " DEFAULT NULL,",
 		"`metadata` JSON DEFAULT NULL",
 		");",
 	}, "\n")

@@ -39,7 +39,7 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitiali
 			"offset" BIGSERIAL,
 			"uuid" VARCHAR(36) NOT NULL,
 			"created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			"payload" ` + s.PayloadColumnType(topic) + ` DEFAULT NULL,
+			"payload" ` + s.PayloadColumnType(params.Topic) + ` DEFAULT NULL,
 			"metadata" JSON DEFAULT NULL,
 			"transaction_id" xid8 NOT NULL,
 			PRIMARY KEY ("transaction_id", "offset")
