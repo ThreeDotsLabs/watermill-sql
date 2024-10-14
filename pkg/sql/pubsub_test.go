@@ -206,8 +206,15 @@ func createConditionalPostgreSQLPubSub(t *testing.T, db *stdSQL.DB) (message.Pub
 		GeneratePayloadType: func(topic string) string {
 			return "BYTEA"
 		},
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_%s"`, topic)
+		},
 	}
-	offsetsAdapter := sql.ConditionalPostgreSQLOffsetsAdapter{}
+	offsetsAdapter := sql.ConditionalPostgreSQLOffsetsAdapter{
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_%s"`, topic)
+		},
+	}
 
 	publisher, err := sql.NewPublisher(
 		db,
