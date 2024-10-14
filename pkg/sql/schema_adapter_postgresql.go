@@ -24,7 +24,7 @@ type DefaultPostgreSQLSchema struct {
 	SubscribeBatchSize int
 
 	// AdvisoryXActLock if greater than zero will use pg_advisory_xact_lock to lock the transaction which is needed
-	// to concurrently create tables.
+	// to concurrently create tables. https://stackoverflow.com/questions/74261789/postgres-create-table-if-not-exists-%E2%87%92-23505
 	AdvisoryXActLock int
 }
 
