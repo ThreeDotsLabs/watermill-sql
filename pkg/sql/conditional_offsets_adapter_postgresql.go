@@ -2,6 +2,7 @@ package sql
 
 import (
 	"fmt"
+
 	"github.com/lib/pq"
 )
 
@@ -43,7 +44,6 @@ func (a ConditionalPostgreSQLOffsetsAdapter) AckMessageQuery(params AckMessageQu
 		offsets[i] = row.Offset
 	}
 
-	// TODO do we need to stick with pq?
 	return Query{ackQuery, []any{pq.Array(offsets)}}
 }
 

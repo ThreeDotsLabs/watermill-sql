@@ -70,6 +70,8 @@ func (c *DelayedPostgreSQLSubscriberConfig) setDefaults() {
 // NewDelayedPostgreSQLSubscriber creates a new Subscriber that reads messages from PostgreSQL with a delay.
 // The delay can be set per message with the Watermill's components/delay metadata.
 func NewDelayedPostgreSQLSubscriber(db *sql.DB, config DelayedPostgreSQLSubscriberConfig) (message.Subscriber, error) {
+	config.setDefaults()
+
 	schemaAdapter := delayedPostgreSQLSchemaAdapter{
 		ConditionalPostgreSQLSchema: ConditionalPostgreSQLSchema{
 			GenerateWhereClause: func(params GenerateWhereClauseParams) (string, []any) {
