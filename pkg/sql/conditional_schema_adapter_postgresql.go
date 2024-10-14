@@ -21,6 +21,10 @@ type ConditionalPostgreSQLSchema struct {
 	// If empty, no where clause will be added.
 	GenerateWhereClause func(params GenerateWhereClauseParams) (string, []any)
 
+	// GeneratePayloadType is the type of the payload column in the messages table.
+	// By default, it's JSON. If your payload is not JSON, you can use BYTEA.
+	GeneratePayloadType func(topic string) string
+
 	// GenerateMessagesTableName may be used to override how the messages table name is generated.
 	GenerateMessagesTableName func(topic string) string
 
@@ -38,7 +42,7 @@ func (s ConditionalPostgreSQLSchema) SchemaInitializingQueries(params SchemaInit
 		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(params.Topic) + ` (
 			"offset" SERIAL PRIMARY KEY,
 			"uuid" VARCHAR(36) NOT NULL,
-			"payload" JSON DEFAULT NULL,
+			"payload" ` + s.GeneratePayloadType(params.Topic) + ` DEFAULT NULL,
 			"metadata" JSON DEFAULT NULL,
 			"acked" BOOLEAN NOT NULL DEFAULT FALSE,
 			"created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -92,9 +96,14 @@ func (s ConditionalPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query
 		Topic: params.Topic,
 	}
 
-	where, args := s.GenerateWhereClause(whereParams)
-	if where != "" {
-		where = "AND " + where
+	var where string
+	var args []any
+
+	if s.GenerateWhereClause != nil {
+		where, args = s.GenerateWhereClause(whereParams)
+		if where != "" {
+			where = "AND " + where
+		}
 	}
 
 	selectQuery := `

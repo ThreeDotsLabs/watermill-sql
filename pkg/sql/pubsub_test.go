@@ -201,6 +201,38 @@ func createPgxPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscri
 	return createPgxPostgreSQLPubSubWithConsumerGroup(t, "test")
 }
 
+func createConditionalPostgreSQLPubSub(t *testing.T, db *stdSQL.DB) (message.Publisher, message.Subscriber) {
+	schemaAdapter := sql.ConditionalPostgreSQLSchema{
+		GeneratePayloadType: func(topic string) string {
+			return "BYTEA"
+		},
+	}
+	offsetsAdapter := sql.ConditionalPostgreSQLOffsetsAdapter{}
+
+	publisher, err := sql.NewPublisher(
+		db,
+		sql.PublisherConfig{
+			SchemaAdapter: schemaAdapter,
+		},
+		logger,
+	)
+	require.NoError(t, err)
+
+	subscriber, err := sql.NewSubscriber(
+		db,
+		sql.SubscriberConfig{
+			PollInterval:   1 * time.Millisecond,
+			ResendInterval: 5 * time.Millisecond,
+			SchemaAdapter:  schemaAdapter,
+			OffsetsAdapter: offsetsAdapter,
+		},
+		logger,
+	)
+	require.NoError(t, err)
+
+	return publisher, subscriber
+}
+
 func TestMySQLPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
@@ -252,6 +284,46 @@ func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 		features,
 		createPgxPostgreSQLPubSub,
 		createPgxPostgreSQLPubSubWithConsumerGroup,
+	)
+}
+
+func TestConditionalPostgreSQLPubSub(t *testing.T) {
+	t.Parallel()
+
+	features := tests.Features{
+		ConsumerGroups:      false,
+		ExactlyOnceDelivery: false,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		func(t *testing.T) (message.Publisher, message.Subscriber) {
+			return createConditionalPostgreSQLPubSub(t, newPostgreSQL(t))
+		},
+		nil,
+	)
+}
+
+func TestPgxConditionalPostgreSQLPubSub(t *testing.T) {
+	t.Parallel()
+
+	features := tests.Features{
+		ConsumerGroups:      false,
+		ExactlyOnceDelivery: false,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		func(t *testing.T) (message.Publisher, message.Subscriber) {
+			return createConditionalPostgreSQLPubSub(t, newPgxPostgreSQL(t))
+		},
+		nil,
 	)
 }
 
@@ -586,7 +658,11 @@ func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
 	<-messages // wait for the subscriber to finish
 
 	schemAdapterBatch1 := newPostgresSchemaAdapter(1)
-	q := schemAdapterBatch1.SelectQuery(topicName, "", offsetsAdapter)
+	q := schemAdapterBatch1.SelectQuery(sql.SelectQueryParams{
+		Topic:          topicName,
+		ConsumerGroup:  "",
+		OffsetsAdapter: offsetsAdapter,
+	})
 
 	var analyseResult string
 

@@ -3,6 +3,7 @@ package sql
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/components/delay"
@@ -107,8 +108,11 @@ type delayedPostgreSQLSchemaAdapter struct {
 func (a delayedPostgreSQLSchemaAdapter) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
 	queries := a.ConditionalPostgreSQLSchema.SchemaInitializingQueries(params)
 
+	table := a.MessagesTable(params.Topic)
+	index := fmt.Sprintf(`"%s_delayed_until_idx"`, strings.ReplaceAll(table, `"`, ""))
+
 	queries = append(queries, Query{
-		Query: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_delayed_until_idx ON %s (metadata->>'%s')`, params.Topic, params.Topic, delay.DelayedUntilKey),
+		Query: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s ((metadata->>'%s'))`, index, table, delay.DelayedUntilKey),
 	})
 
 	return queries
