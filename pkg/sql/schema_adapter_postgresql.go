@@ -22,6 +22,10 @@ type DefaultPostgreSQLSchema struct {
 	//
 	// Default value is 100.
 	SubscribeBatchSize int
+
+	// AdvisoryXActLock if greater than zero will use pg_advisory_xact_lock to lock the transaction which is needed
+	// to concurrently create tables.
+	AdvisoryXActLock int
 }
 
 func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query {
@@ -37,7 +41,14 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query
 		);
 	`
 
-	return []Query{{Query: createMessagesTable}}
+	queries := []Query{{Query: createMessagesTable}}
+	if s.AdvisoryXActLock > 0 {
+		queries = append([]Query{
+			{Query: fmt.Sprintf("SELECT pg_advisory_xact_lock(%d);", s.AdvisoryXActLock)},
+		}, queries...)
+	}
+
+	return queries
 }
 
 func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages) (Query, error) {

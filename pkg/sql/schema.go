@@ -11,7 +11,7 @@ func initializeSchema(
 	ctx context.Context,
 	topic string,
 	logger watermill.LoggerAdapter,
-	db ContextExecutor,
+	db Beginner,
 	schemaAdapter SchemaAdapter,
 	offsetsAdapter OffsetsAdapter,
 ) error {
@@ -29,11 +29,21 @@ func initializeSchema(
 		"query": initializingQueries,
 	})
 
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return errors.Wrap(err, "could not start transaction")
+	}
+
 	for _, q := range initializingQueries {
-		_, err := db.ExecContext(ctx, q.Query, q.Args...)
+		_, err := tx.ExecContext(ctx, q.Query, q.Args...)
 		if err != nil {
 			return errors.Wrap(err, "could not initialize schema")
 		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return errors.Wrap(err, "could not commit transaction")
 	}
 
 	return nil

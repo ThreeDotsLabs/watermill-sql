@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill-sql/v3/pkg/sql"
-
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Conn interface {

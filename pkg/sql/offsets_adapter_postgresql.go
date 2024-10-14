@@ -16,20 +16,29 @@ import (
 type DefaultPostgreSQLOffsetsAdapter struct {
 	// GenerateMessagesOffsetsTableName may be used to override how the messages/offsets table name is generated.
 	GenerateMessagesOffsetsTableName func(topic string) string
+
+	// AdvisoryXActLock if greater than zero will use pg_advisory_xact_lock to lock the transaction which is needed
+	// to concurrently create tables.
+	AdvisoryXActLock int
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) SchemaInitializingQueries(topic string) []Query {
-	return []Query{
-		{
-			Query: `
+	createOffsetsTableQuery := `
 				CREATE TABLE IF NOT EXISTS ` + a.MessagesOffsetsTable(topic) + ` (
 				consumer_group VARCHAR(255) NOT NULL,
 				offset_acked BIGINT,
 				last_processed_transaction_id xid8 NOT NULL,
 				PRIMARY KEY(consumer_group)
-			)`,
-		},
+			)`
+
+	queries := []Query{{Query: createOffsetsTableQuery}}
+	if a.AdvisoryXActLock > 0 {
+		queries = append([]Query{
+			{Query: fmt.Sprintf("SELECT pg_advisory_xact_lock(%d);", a.AdvisoryXActLock)},
+		}, queries...)
 	}
+
+	return queries
 }
 
 func (a DefaultPostgreSQLOffsetsAdapter) NextOffsetQuery(topic, consumerGroup string) Query {

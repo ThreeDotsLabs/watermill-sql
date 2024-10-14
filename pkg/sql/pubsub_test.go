@@ -15,8 +15,9 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message/subscriber"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	driver "github.com/go-sql-driver/mysql"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -108,15 +109,17 @@ func newPgxPostgreSQL(t *testing.T) sql.Beginner {
 	return sql.StdSQLBeginner{DB: db}
 }
 
-func newPgx(t *testing.T) sql.Beginner {
+func newPgx(t *testing.T) wpgx.Beginner {
 	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
 	if addr == "" {
 		addr = "localhost"
 	}
 
 	connStr := fmt.Sprintf("postgres://watermill:password@%s/watermill?sslmode=disable", addr)
+	conf, err := pgxpool.ParseConfig(connStr)
+	require.NoError(t, err)
 
-	db, err := pgx.Connect(context.Background(), connStr)
+	db, err := pgxpool.NewWithConfig(context.Background(), conf)
 	require.NoError(t, err)
 
 	err = db.Ping(context.Background())
@@ -206,11 +209,10 @@ func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup stri
 }
 
 func createPgxPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
-	schemaAdapter := &testPostgreSQLSchema{
-		sql.DefaultPostgreSQLSchema{
-			GenerateMessagesTableName: func(topic string) string {
-				return fmt.Sprintf(`"test_pgx_%s"`, topic)
-			},
+	schemaAdapter := &sql.DefaultPostgreSQLSchema{
+		AdvisoryXActLock: 1,
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_pgx_%s"`, topic)
 		},
 	}
 
