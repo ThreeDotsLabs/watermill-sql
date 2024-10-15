@@ -42,7 +42,7 @@ func (s ConditionalPostgreSQLSchema) SchemaInitializingQueries(params SchemaInit
 		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(params.Topic) + ` (
 			"offset" SERIAL PRIMARY KEY,
 			"uuid" VARCHAR(36) NOT NULL,
-			"payload" ` + s.GeneratePayloadType(params.Topic) + ` DEFAULT NULL,
+			"payload" ` + s.payloadColumnType(params.Topic) + ` DEFAULT NULL,
 			"metadata" JSON DEFAULT NULL,
 			"acked" BOOLEAN NOT NULL DEFAULT FALSE,
 			"created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -149,4 +149,12 @@ func (s ConditionalPostgreSQLSchema) MessagesTable(topic string) string {
 func (s ConditionalPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
 	// For Postgres Repeatable Read is enough.
 	return sql.LevelRepeatableRead
+}
+
+func (s ConditionalPostgreSQLSchema) payloadColumnType(topic string) string {
+	if s.GeneratePayloadType == nil {
+		return "JSON"
+	}
+
+	return s.GeneratePayloadType(topic)
 }
