@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -31,12 +32,14 @@ func TestDelayedPostgreSQL(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	messages, err := sub.Subscribe(context.Background(), "test")
+	topic := uuid.NewString()
+
+	messages, err := sub.Subscribe(context.Background(), topic)
 	require.NoError(t, err)
 
 	msg := message.NewMessage(watermill.NewUUID(), []byte("{}"))
 
-	err = pub.Publish("test", msg)
+	err = pub.Publish(topic, msg)
 	require.NoError(t, err)
 
 	assert.EventuallyWithT(t, func(t *assert.CollectT) {
@@ -51,6 +54,7 @@ func TestDelayedPostgreSQL(t *testing.T) {
 		select {
 		case received := <-messages:
 			assert.Equal(t, msg.UUID, received.UUID)
+			received.Ack()
 		default:
 		}
 	}, time.Millisecond*100, time.Millisecond*10)
