@@ -299,7 +299,7 @@ func TestConditionalPostgreSQLPubSub(t *testing.T) {
 
 	features := tests.Features{
 		ConsumerGroups:      false,
-		ExactlyOnceDelivery: false,
+		ExactlyOnceDelivery: true,
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}
@@ -319,7 +319,7 @@ func TestPgxConditionalPostgreSQLPubSub(t *testing.T) {
 
 	features := tests.Features{
 		ConsumerGroups:      false,
-		ExactlyOnceDelivery: false,
+		ExactlyOnceDelivery: true,
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}
