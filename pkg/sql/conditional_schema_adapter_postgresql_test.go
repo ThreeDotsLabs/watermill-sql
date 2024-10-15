@@ -20,7 +20,7 @@ func TestConditionalPostgreSQLSchemaAdapter(t *testing.T) {
 
 	schemaAdapter := sql.ConditionalPostgreSQLSchema{
 		GenerateWhereClause: func(params sql.GenerateWhereClauseParams) (string, []any) {
-			return fmt.Sprintf("(metadata->>'skip') IS NULL OR (metadata->>'skip') != 'true'"), nil
+			return "(metadata->>'skip') IS NULL OR (metadata->>'skip') != 'true'", nil
 		},
 	}
 
