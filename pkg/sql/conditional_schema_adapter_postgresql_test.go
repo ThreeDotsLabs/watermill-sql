@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v3/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -39,7 +39,7 @@ func TestConditionalPostgreSQLSchemaAdapter(t *testing.T) {
 	}, logger)
 	require.NoError(t, err)
 
-	topic := uuid.NewString()
+	topic := watermill.NewUUID()
 
 	messages, err := sub.Subscribe(context.Background(), topic)
 	require.NoError(t, err)

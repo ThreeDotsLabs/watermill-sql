@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -32,7 +31,7 @@ func TestDelayedPostgreSQL(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	topic := uuid.NewString()
+	topic := watermill.NewUUID()
 
 	messages, err := sub.Subscribe(context.Background(), topic)
 	require.NoError(t, err)
