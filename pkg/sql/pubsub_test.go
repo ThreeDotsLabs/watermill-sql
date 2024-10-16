@@ -311,20 +311,29 @@ func TestPgxPublishSubscribe(t *testing.T) {
 
 func TestCtxValues(t *testing.T) {
 	pubSubConstructors := []struct {
-		Name        string
-		Constructor func(t *testing.T) (message.Publisher, message.Subscriber)
+		Name         string
+		Constructor  func(t *testing.T) (message.Publisher, message.Subscriber)
+		ExpectedType interface{}
 	}{
 		{
-			Name:        "mysql",
-			Constructor: createMySQLPubSub,
+			Name:         "mysql",
+			Constructor:  createMySQLPubSub,
+			ExpectedType: &sql.StdSQLTx{},
 		},
 		{
-			Name:        "postgresql",
-			Constructor: createPostgreSQLPubSub,
+			Name:         "postgresql",
+			Constructor:  createPostgreSQLPubSub,
+			ExpectedType: &sql.StdSQLTx{},
+		},
+		{
+			Name:         "pgx",
+			Constructor:  createPgxPubSub,
+			ExpectedType: wpgx.Tx{},
 		},
 	}
 
 	for _, constructor := range pubSubConstructors {
+		constructor := constructor
 		pub, sub := constructor.Constructor(t)
 
 		t.Run(constructor.Name, func(t *testing.T) {
@@ -353,7 +362,7 @@ func TestCtxValues(t *testing.T) {
 				tx, ok := sql.TxFromContext(msg.Context())
 				assert.True(t, ok)
 				assert.NotNil(t, t, tx)
-				assert.IsType(t, &sql.StdSQLTx{}, tx)
+				assert.IsType(t, constructor.ExpectedType, tx)
 				msg.Ack()
 			case <-time.After(time.Second * 10):
 				t.Fatal("no message received")
@@ -382,6 +391,14 @@ func TestNotMissingMessages(t *testing.T) {
 		{
 			Name:           "postgresql",
 			DbConstructor:  newPostgreSQL,
+			SchemaAdapter:  newPostgresSchemaAdapter(0),
+			OffsetsAdapter: newPostgresOffsetsAdapter(),
+		},
+		{
+			Name: "pgx",
+			DbConstructor: func(t *testing.T) sql.Beginner {
+				return newPgx(t)
+			},
 			SchemaAdapter:  newPostgresSchemaAdapter(0),
 			OffsetsAdapter: newPostgresOffsetsAdapter(),
 		},
@@ -567,6 +584,32 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 				return newPubSub(
 					t,
 					newPostgreSQL(t),
+					"test",
+					newPostgresSchemaAdapter(5),
+					newPostgresOffsetsAdapter(),
+				)
+			},
+			Test: tests.TestConcurrentSubscribe,
+		},
+		{
+			Name: "TestConcurrentSubscribe_pgx_1",
+			Constructor: func(t *testing.T) (message.Publisher, message.Subscriber) {
+				return newPubSub(
+					t,
+					newPgx(t),
+					"test",
+					newPostgresSchemaAdapter(1),
+					newPostgresOffsetsAdapter(),
+				)
+			},
+			Test: tests.TestPublishSubscribe,
+		},
+		{
+			Name: "TestConcurrentSubscribe_pgx_5",
+			Constructor: func(t *testing.T) (message.Publisher, message.Subscriber) {
+				return newPubSub(
+					t,
+					newPgx(t),
 					"test",
 					newPostgresSchemaAdapter(5),
 					newPostgresOffsetsAdapter(),

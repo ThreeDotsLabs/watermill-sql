@@ -154,3 +154,7 @@ func (s DefaultPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
 	// For Postgres Repeatable Read is enough.
 	return sql.LevelRepeatableRead
 }
+
+func (s DefaultPostgreSQLSchema) RequiresTransaction() bool {
+	return s.AdvisoryXActLock > 0
+}
