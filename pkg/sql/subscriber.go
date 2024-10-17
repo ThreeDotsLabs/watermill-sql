@@ -180,7 +180,10 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 		}
 	}
 
-	bsq := s.config.OffsetsAdapter.BeforeSubscribingQueries(topic, s.config.ConsumerGroup)
+	bsq := s.config.OffsetsAdapter.BeforeSubscribingQueries(BeforeSubscribingQueriesParams{
+		Topic:         topic,
+		ConsumerGroup: s.config.ConsumerGroup,
+	})
 
 	if len(bsq) >= 1 {
 		err := runInTx(ctx, s.db, func(ctx context.Context, tx *sql.Tx) error {
@@ -283,9 +286,11 @@ func (s *Subscriber) query(
 	}()
 
 	selectQuery := s.config.SchemaAdapter.SelectQuery(
-		topic,
-		s.config.ConsumerGroup,
-		s.config.OffsetsAdapter,
+		SelectQueryParams{
+			Topic:          topic,
+			ConsumerGroup:  s.config.ConsumerGroup,
+			OffsetsAdapter: s.config.OffsetsAdapter,
+		},
 	)
 	logger.Trace("Querying message", watermill.LogFields{
 		"query":      selectQuery.Query,
@@ -308,7 +313,9 @@ func (s *Subscriber) query(
 	messageRows := make([]Row, 0)
 
 	for rows.Next() {
-		row, err := s.config.SchemaAdapter.UnmarshalMessage(rows)
+		row, err := s.config.SchemaAdapter.UnmarshalMessage(UnmarshalMessageParams{
+			Row: rows,
+		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return true, nil
 		} else if err != nil {
@@ -336,9 +343,12 @@ func (s *Subscriber) query(
 	}
 
 	ackQuery := s.config.OffsetsAdapter.AckMessageQuery(
-		topic,
-		lastRow,
-		s.config.ConsumerGroup,
+		AckMessageQueryParams{
+			Topic:         topic,
+			LastRow:       lastRow,
+			Rows:          messageRows,
+			ConsumerGroup: s.config.ConsumerGroup,
+		},
 	)
 
 	logger.Trace("Executing ack message query", watermill.LogFields{
@@ -375,10 +385,12 @@ func (s *Subscriber) processMessage(
 	}
 
 	consumedQuery := s.config.OffsetsAdapter.ConsumedMessageQuery(
-		topic,
-		row,
-		s.config.ConsumerGroup,
-		s.consumerIdBytes,
+		ConsumedMessageQueryParams{
+			Topic:         topic,
+			Row:           row,
+			ConsumerGroup: s.config.ConsumerGroup,
+			ConsumerULID:  s.consumerIdBytes,
+		},
 	)
 	if !consumedQuery.IsZero() {
 		logger.Trace("Executing query to confirm message consumed", watermill.LogFields{

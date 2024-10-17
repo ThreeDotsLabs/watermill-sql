@@ -103,7 +103,10 @@ func (p *Publisher) Publish(topic string, messages ...*message.Message) (err err
 		return err
 	}
 
-	insertQuery, err := p.config.SchemaAdapter.InsertQuery(topic, messages)
+	insertQuery, err := p.config.SchemaAdapter.InsertQuery(InsertQueryParams{
+		Topic: topic,
+		Msgs:  messages,
+	})
 	if err != nil {
 		return fmt.Errorf("cannot create insert query: %w", err)
 	}

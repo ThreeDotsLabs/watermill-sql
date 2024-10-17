@@ -20,9 +20,14 @@ func initializeSchema(
 		return err
 	}
 
-	initializingQueries := schemaAdapter.SchemaInitializingQueries(topic)
+	initializingQueries := schemaAdapter.SchemaInitializingQueries(SchemaInitializingQueriesParams{
+		Topic: topic,
+	})
 	if offsetsAdapter != nil {
-		initializingQueries = append(initializingQueries, offsetsAdapter.SchemaInitializingQueries(topic)...)
+		queries := offsetsAdapter.SchemaInitializingQueries(OffsetsSchemaInitializingQueriesParams{
+			Topic: topic,
+		})
+		initializingQueries = append(initializingQueries, queries...)
 	}
 
 	logger.Info("Initializing subscriber schema", watermill.LogFields{
