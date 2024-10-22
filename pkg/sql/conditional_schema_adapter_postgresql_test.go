@@ -16,6 +16,8 @@ import (
 )
 
 func TestConditionalPostgreSQLSchemaAdapter(t *testing.T) {
+	t.Parallel()
+
 	db := newPostgreSQL(t)
 
 	schemaAdapter := sql.ConditionalPostgreSQLSchema{

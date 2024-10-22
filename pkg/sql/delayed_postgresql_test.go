@@ -15,6 +15,8 @@ import (
 )
 
 func TestDelayedPostgreSQL(t *testing.T) {
+	t.Parallel()
+
 	db := newPostgreSQL(t)
 
 	pub, err := sql.NewDelayedPostgreSQLPublisher(db, sql.DelayedPostgreSQLPublisherConfig{
@@ -57,4 +59,28 @@ func TestDelayedPostgreSQL(t *testing.T) {
 		default:
 		}
 	}, time.Millisecond*100, time.Millisecond*10)
+}
+
+func TestDelayedPostgreSQLNotStrict(t *testing.T) {
+	t.Parallel()
+
+	db := newPostgreSQL(t)
+
+	pub, err := sql.NewDelayedPostgreSQLPublisher(db, sql.DelayedPostgreSQLPublisherConfig{
+		DelayPublisherConfig: delay.PublisherConfig{
+			DefaultDelay: delay.For(150 * time.Millisecond),
+		},
+		Logger: logger,
+	})
+	require.NoError(t, err)
+
+	msg := message.NewMessage(watermill.NewUUID(), []byte("{}"))
+
+	err = pub.Publish(watermill.NewUUID(), msg)
+	require.Error(t, err)
+
+	delay.Message(msg, delay.For(10*time.Second))
+	err = pub.Publish(watermill.NewUUID(), msg)
+	require.NoError(t, err)
+
 }

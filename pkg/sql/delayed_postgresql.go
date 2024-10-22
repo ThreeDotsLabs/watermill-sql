@@ -11,9 +11,13 @@ import (
 )
 
 type DelayedPostgreSQLPublisherConfig struct {
-	DelayPublisherConfig    delay.PublisherConfig
+	// DelayPublisherConfig is a configuration for the delay.Publisher.
+	DelayPublisherConfig delay.PublisherConfig
+
+	// OverridePublisherConfig allows overriding the default PublisherConfig.
 	OverridePublisherConfig func(config *PublisherConfig) error
-	Logger                  watermill.LoggerAdapter
+
+	Logger watermill.LoggerAdapter
 }
 
 func (c *DelayedPostgreSQLPublisherConfig) setDefaults() {

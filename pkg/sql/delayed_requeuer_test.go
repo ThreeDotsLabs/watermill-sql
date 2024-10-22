@@ -15,6 +15,8 @@ import (
 )
 
 func TestDelayedRequeuer(t *testing.T) {
+	t.Parallel()
+
 	db := newPostgreSQL(t)
 	schemaAdapter := sql.DefaultPostgreSQLSchema{}
 	offsetsAdapter := sql.DefaultPostgreSQLOffsetsAdapter{}
