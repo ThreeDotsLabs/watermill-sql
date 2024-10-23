@@ -1,4 +1,4 @@
-module github.com/ThreeDotsLabs/watermill-sql/v3
+module github.com/ThreeDotsLabs/watermill-sql/v4
 
 go 1.21
 
