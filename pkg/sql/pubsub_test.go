@@ -201,8 +201,8 @@ func createPgxPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscri
 	return createPgxPostgreSQLPubSubWithConsumerGroup(t, "test")
 }
 
-func createConditionalPostgreSQLPubSub(t *testing.T, db *stdSQL.DB) (message.Publisher, message.Subscriber) {
-	schemaAdapter := sql.ConditionalPostgreSQLSchema{
+func createPostgreSQLQueue(t *testing.T, db *stdSQL.DB) (message.Publisher, message.Subscriber) {
+	schemaAdapter := sql.PostgreSQLQueueSchema{
 		GeneratePayloadType: func(topic string) string {
 			return "BYTEA"
 		},
@@ -210,7 +210,7 @@ func createConditionalPostgreSQLPubSub(t *testing.T, db *stdSQL.DB) (message.Pub
 			return fmt.Sprintf(`"test_%s"`, topic)
 		},
 	}
-	offsetsAdapter := sql.ConditionalPostgreSQLOffsetsAdapter{
+	offsetsAdapter := sql.PostgreSQLQueueOffsetsAdapter{
 		GenerateMessagesTableName: func(topic string) string {
 			return fmt.Sprintf(`"test_%s"`, topic)
 		},
@@ -294,7 +294,7 @@ func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 	)
 }
 
-func TestConditionalPostgreSQLPubSub(t *testing.T) {
+func TestPostgreSQLQueue(t *testing.T) {
 	t.Parallel()
 
 	features := tests.Features{
@@ -308,13 +308,13 @@ func TestConditionalPostgreSQLPubSub(t *testing.T) {
 		t,
 		features,
 		func(t *testing.T) (message.Publisher, message.Subscriber) {
-			return createConditionalPostgreSQLPubSub(t, newPostgreSQL(t))
+			return createPostgreSQLQueue(t, newPostgreSQL(t))
 		},
 		nil,
 	)
 }
 
-func TestPgxConditionalPostgreSQLPubSub(t *testing.T) {
+func TestPgxPostgreSQLQueue(t *testing.T) {
 	t.Parallel()
 
 	features := tests.Features{
@@ -328,7 +328,7 @@ func TestPgxConditionalPostgreSQLPubSub(t *testing.T) {
 		t,
 		features,
 		func(t *testing.T) (message.Publisher, message.Subscriber) {
-			return createConditionalPostgreSQLPubSub(t, newPgxPostgreSQL(t))
+			return createPostgreSQLQueue(t, newPgxPostgreSQL(t))
 		},
 		nil,
 	)

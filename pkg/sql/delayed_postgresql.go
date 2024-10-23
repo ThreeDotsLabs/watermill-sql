@@ -32,7 +32,7 @@ func NewDelayedPostgreSQLPublisher(db *sql.DB, config DelayedPostgreSQLPublisher
 	config.setDefaults()
 
 	publisherConfig := PublisherConfig{
-		SchemaAdapter:        ConditionalPostgreSQLSchema{},
+		SchemaAdapter:        PostgreSQLQueueSchema{},
 		AutoInitializeSchema: true,
 	}
 
@@ -77,7 +77,7 @@ func NewDelayedPostgreSQLSubscriber(db *sql.DB, config DelayedPostgreSQLSubscrib
 	config.setDefaults()
 
 	schemaAdapter := delayedPostgreSQLSchemaAdapter{
-		ConditionalPostgreSQLSchema: ConditionalPostgreSQLSchema{
+		PostgreSQLQueueSchema: PostgreSQLQueueSchema{
 			GenerateWhereClause: func(params GenerateWhereClauseParams) (string, []any) {
 				return fmt.Sprintf("(metadata->>'%v')::timestamptz < NOW() AT TIME ZONE 'UTC'", delay.DelayedUntilKey), nil
 			},
@@ -86,7 +86,7 @@ func NewDelayedPostgreSQLSubscriber(db *sql.DB, config DelayedPostgreSQLSubscrib
 
 	subscriberConfig := SubscriberConfig{
 		SchemaAdapter: schemaAdapter,
-		OffsetsAdapter: ConditionalPostgreSQLOffsetsAdapter{
+		OffsetsAdapter: PostgreSQLQueueOffsetsAdapter{
 			DeleteOnAck: config.DeleteOnAck,
 		},
 		InitializeSchema: true,
@@ -108,11 +108,11 @@ func NewDelayedPostgreSQLSubscriber(db *sql.DB, config DelayedPostgreSQLSubscrib
 }
 
 type delayedPostgreSQLSchemaAdapter struct {
-	ConditionalPostgreSQLSchema
+	PostgreSQLQueueSchema
 }
 
 func (a delayedPostgreSQLSchemaAdapter) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
-	queries := a.ConditionalPostgreSQLSchema.SchemaInitializingQueries(params)
+	queries := a.PostgreSQLQueueSchema.SchemaInitializingQueries(params)
 
 	table := a.MessagesTable(params.Topic)
 	index := fmt.Sprintf(`"%s_delayed_until_idx"`, strings.ReplaceAll(table, `"`, ""))

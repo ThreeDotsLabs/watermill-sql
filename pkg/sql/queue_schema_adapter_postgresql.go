@@ -13,9 +13,10 @@ type GenerateWhereClauseParams struct {
 	Topic string
 }
 
-// ConditionalPostgreSQLSchema is a schema adapter for PostgreSQL that allows filtering messages by some condition.
+// PostgreSQLQueueSchema is a schema adapter for PostgreSQL that allows filtering messages by some condition.
 // It DOES NOT support consumer groups.
-type ConditionalPostgreSQLSchema struct {
+// It supports deleting messages on ack.
+type PostgreSQLQueueSchema struct {
 	// GenerateWhereClause is a function that returns a where clause and arguments for the SELECT query.
 	// It may be used to filter messages by some condition.
 	// If empty, no where clause will be added.
@@ -37,7 +38,7 @@ type ConditionalPostgreSQLSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s ConditionalPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
+func (s PostgreSQLQueueSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
 	createMessagesTable := ` 
 		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(params.Topic) + ` (
 			"offset" SERIAL PRIMARY KEY,
@@ -52,11 +53,11 @@ func (s ConditionalPostgreSQLSchema) SchemaInitializingQueries(params SchemaInit
 	return []Query{{Query: createMessagesTable}}
 }
 
-func (s ConditionalPostgreSQLSchema) InsertQuery(params InsertQueryParams) (Query, error) {
+func (s PostgreSQLQueueSchema) InsertQuery(params InsertQueryParams) (Query, error) {
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata) VALUES %s`,
 		s.MessagesTable(params.Topic),
-		conditionalInsertMarkers(len(params.Msgs)),
+		queueInsertMarkers(len(params.Msgs)),
 	)
 
 	args, err := defaultInsertArgs(params.Msgs)
@@ -67,7 +68,7 @@ func (s ConditionalPostgreSQLSchema) InsertQuery(params InsertQueryParams) (Quer
 	return Query{insertQuery, args}, nil
 }
 
-func conditionalInsertMarkers(count int) string {
+func queueInsertMarkers(count int) string {
 	result := strings.Builder{}
 
 	index := 1
@@ -79,7 +80,7 @@ func conditionalInsertMarkers(count int) string {
 	return strings.TrimRight(result.String(), ",")
 }
 
-func (s ConditionalPostgreSQLSchema) batchSize() int {
+func (s PostgreSQLQueueSchema) batchSize() int {
 	if s.SubscribeBatchSize == 0 {
 		return 100
 	}
@@ -87,9 +88,9 @@ func (s ConditionalPostgreSQLSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s ConditionalPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query {
+func (s PostgreSQLQueueSchema) SelectQuery(params SelectQueryParams) Query {
 	if params.ConsumerGroup != "" {
-		panic("consumer groups are not supported in ConditionalPostgreSQLSchema")
+		panic("consumer groups are not supported in PostgreSQLQueueSchema")
 	}
 
 	whereParams := GenerateWhereClauseParams{
@@ -117,7 +118,7 @@ func (s ConditionalPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query
 	return Query{selectQuery, args}
 }
 
-func (s ConditionalPostgreSQLSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {
+func (s PostgreSQLQueueSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {
 	r := Row{}
 
 	err := params.Row.Scan(&r.Offset, &r.UUID, &r.Payload, &r.Metadata)
@@ -139,19 +140,19 @@ func (s ConditionalPostgreSQLSchema) UnmarshalMessage(params UnmarshalMessagePar
 	return r, nil
 }
 
-func (s ConditionalPostgreSQLSchema) MessagesTable(topic string) string {
+func (s PostgreSQLQueueSchema) MessagesTable(topic string) string {
 	if s.GenerateMessagesTableName != nil {
 		return s.GenerateMessagesTableName(topic)
 	}
 	return fmt.Sprintf(`"watermill_%s"`, topic)
 }
 
-func (s ConditionalPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
+func (s PostgreSQLQueueSchema) SubscribeIsolationLevel() sql.IsolationLevel {
 	// For Postgres Repeatable Read is enough.
 	return sql.LevelRepeatableRead
 }
 
-func (s ConditionalPostgreSQLSchema) payloadColumnType(topic string) string {
+func (s PostgreSQLQueueSchema) payloadColumnType(topic string) string {
 	if s.GeneratePayloadType == nil {
 		return "JSON"
 	}

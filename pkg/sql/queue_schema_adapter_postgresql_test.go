@@ -15,12 +15,12 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-func TestConditionalPostgreSQLSchemaAdapter(t *testing.T) {
+func TestPostgreSQLQueueSchemaAdapter(t *testing.T) {
 	t.Parallel()
 
 	db := newPostgreSQL(t)
 
-	schemaAdapter := sql.ConditionalPostgreSQLSchema{
+	schemaAdapter := sql.PostgreSQLQueueSchema{
 		GenerateWhereClause: func(params sql.GenerateWhereClauseParams) (string, []any) {
 			return "(metadata->>'skip') IS NULL OR (metadata->>'skip') != 'true'", nil
 		},
@@ -34,7 +34,7 @@ func TestConditionalPostgreSQLSchemaAdapter(t *testing.T) {
 
 	sub, err := sql.NewSubscriber(db, sql.SubscriberConfig{
 		SchemaAdapter: schemaAdapter,
-		OffsetsAdapter: sql.ConditionalPostgreSQLOffsetsAdapter{
+		OffsetsAdapter: sql.PostgreSQLQueueOffsetsAdapter{
 			DeleteOnAck: true,
 		},
 		InitializeSchema: true,

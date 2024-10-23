@@ -6,8 +6,8 @@ import (
 	"github.com/lib/pq"
 )
 
-// ConditionalPostgreSQLOffsetsAdapter is an OffsetsAdapter for the ConditionalPostgreSQLSchema.
-type ConditionalPostgreSQLOffsetsAdapter struct {
+// PostgreSQLQueueOffsetsAdapter is an OffsetsAdapter for the PostgreSQLQueueSchema.
+type PostgreSQLQueueOffsetsAdapter struct {
 	// DeleteOnAck determines whether the message should be deleted from the table when it is acknowledged.
 	// If false, the message will be marked as acked.
 	DeleteOnAck bool
@@ -16,17 +16,17 @@ type ConditionalPostgreSQLOffsetsAdapter struct {
 	GenerateMessagesTableName func(topic string) string
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) []Query {
+func (a PostgreSQLQueueOffsetsAdapter) SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) []Query {
 	return []Query{}
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams) Query {
+func (a PostgreSQLQueueOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams) Query {
 	return Query{}
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) AckMessageQuery(params AckMessageQueryParams) Query {
+func (a PostgreSQLQueueOffsetsAdapter) AckMessageQuery(params AckMessageQueryParams) Query {
 	if params.ConsumerGroup != "" {
-		panic("consumer groups are not supported in ConditionalPostgreSQLOffsetsAdapter")
+		panic("consumer groups are not supported in PostgreSQLQueueOffsetsAdapter")
 	}
 
 	var ackQuery string
@@ -47,17 +47,17 @@ func (a ConditionalPostgreSQLOffsetsAdapter) AckMessageQuery(params AckMessageQu
 	return Query{ackQuery, []any{pq.Array(offsets)}}
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) MessagesTable(topic string) string {
+func (a PostgreSQLQueueOffsetsAdapter) MessagesTable(topic string) string {
 	if a.GenerateMessagesTableName != nil {
 		return a.GenerateMessagesTableName(topic)
 	}
 	return fmt.Sprintf(`"watermill_%s"`, topic)
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQueryParams) Query {
+func (a PostgreSQLQueueOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQueryParams) Query {
 	return Query{}
 }
 
-func (a ConditionalPostgreSQLOffsetsAdapter) BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) []Query {
+func (a PostgreSQLQueueOffsetsAdapter) BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) []Query {
 	return []Query{}
 }
