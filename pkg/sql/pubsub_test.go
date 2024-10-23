@@ -665,11 +665,12 @@ func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
 	<-messages // wait for the subscriber to finish
 
 	schemAdapterBatch1 := newPostgresSchemaAdapter(1)
-	q := schemAdapterBatch1.SelectQuery(sql.SelectQueryParams{
+	q, err := schemAdapterBatch1.SelectQuery(sql.SelectQueryParams{
 		Topic:          topicName,
 		ConsumerGroup:  "",
 		OffsetsAdapter: offsetsAdapter,
 	})
+	require.NoError(t, err)
 
 	var analyseResult string
 

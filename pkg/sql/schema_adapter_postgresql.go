@@ -27,7 +27,7 @@ type DefaultPostgreSQLSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
+func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
 	// theoretically this primary key allows duplicate offsets for same transaction_id
 	// but in practice it should not happen with SERIAL, so we can keep one index and make it more
 	// storage efficient
@@ -46,7 +46,7 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitiali
 		);
 	`
 
-	return []Query{{Query: createMessagesTable}}
+	return []Query{{Query: createMessagesTable}}, nil
 }
 
 func (s DefaultPostgreSQLSchema) InsertQuery(params InsertQueryParams) (Query, error) {
@@ -84,7 +84,7 @@ func (s DefaultPostgreSQLSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query {
+func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) (Query, error) {
 	// Query inspired by https://event-driven.io/en/ordering_in_postgres_outbox/
 
 	nextOffsetParams := NextOffsetQueryParams{
@@ -92,7 +92,10 @@ func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query {
 		ConsumerGroup: params.ConsumerGroup,
 	}
 
-	nextOffsetQuery := params.OffsetsAdapter.NextOffsetQuery(nextOffsetParams)
+	nextOffsetQuery, err := params.OffsetsAdapter.NextOffsetQuery(nextOffsetParams)
+	if err != nil {
+		return Query{}, err
+	}
 
 	// We are using subquery to avoid problems with query planner mis-estimating
 	// and performing expensive index scans, read more:
@@ -171,7 +174,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) Query {
 		"offset" ASC
 	LIMIT ` + fmt.Sprintf("%d", s.batchSize())
 
-	return Query{selectQuery, nextOffsetQuery.Args}
+	return Query{selectQuery, nextOffsetQuery.Args}, nil
 }
 
 func (s DefaultPostgreSQLSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {

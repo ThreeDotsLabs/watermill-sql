@@ -18,7 +18,7 @@ type DefaultMySQLOffsetsAdapter struct {
 	GenerateMessagesOffsetsTableName func(topic string) string
 }
 
-func (a DefaultMySQLOffsetsAdapter) SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) []Query {
+func (a DefaultMySQLOffsetsAdapter) SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) ([]Query, error) {
 	return []Query{
 		{
 			Query: `
@@ -29,17 +29,17 @@ func (a DefaultMySQLOffsetsAdapter) SchemaInitializingQueries(params OffsetsSche
 				PRIMARY KEY(consumer_group)
 			)`,
 		},
-	}
+	}, nil
 }
 
-func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(params AckMessageQueryParams) Query {
+func (a DefaultMySQLOffsetsAdapter) AckMessageQuery(params AckMessageQueryParams) (Query, error) {
 	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(params.Topic) + ` (offset_consumed, offset_acked, consumer_group)
 		VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE offset_consumed=VALUES(offset_consumed), offset_acked=VALUES(offset_acked)`
 
-	return Query{ackQuery, []any{params.LastRow.Offset, params.LastRow.Offset, params.ConsumerGroup}}
+	return Query{ackQuery, []any{params.LastRow.Offset, params.LastRow.Offset, params.ConsumerGroup}}, nil
 }
 
-func (a DefaultMySQLOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams) Query {
+func (a DefaultMySQLOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams) (Query, error) {
 	return Query{
 		Query: `SELECT COALESCE(
 				(SELECT offset_acked
@@ -47,7 +47,7 @@ func (a DefaultMySQLOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams
 				 WHERE consumer_group=? FOR UPDATE
 				), 0)`,
 		Args: []any{params.ConsumerGroup},
-	}
+	}, nil
 }
 
 func (a DefaultMySQLOffsetsAdapter) MessagesOffsetsTable(topic string) string {
@@ -57,13 +57,13 @@ func (a DefaultMySQLOffsetsAdapter) MessagesOffsetsTable(topic string) string {
 	return fmt.Sprintf("`watermill_offsets_%s`", topic)
 }
 
-func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQueryParams) Query {
+func (a DefaultMySQLOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQueryParams) (Query, error) {
 	// offset_consumed is not queried anywhere, it's used only to detect race conditions with NextOffsetQuery.
 	ackQuery := `INSERT INTO ` + a.MessagesOffsetsTable(params.Topic) + ` (offset_consumed, consumer_group)
 		VALUES (?, ?) ON DUPLICATE KEY UPDATE offset_consumed=VALUES(offset_consumed)`
-	return Query{ackQuery, []interface{}{params.Row.Offset, params.ConsumerGroup}}
+	return Query{ackQuery, []interface{}{params.Row.Offset, params.ConsumerGroup}}, nil
 }
 
-func (a DefaultMySQLOffsetsAdapter) BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) []Query {
-	return nil
+func (a DefaultMySQLOffsetsAdapter) BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) ([]Query, error) {
+	return nil, nil
 }

@@ -111,8 +111,11 @@ type delayedPostgreSQLSchemaAdapter struct {
 	PostgreSQLQueueSchema
 }
 
-func (a delayedPostgreSQLSchemaAdapter) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
-	queries := a.PostgreSQLQueueSchema.SchemaInitializingQueries(params)
+func (a delayedPostgreSQLSchemaAdapter) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
+	queries, err := a.PostgreSQLQueueSchema.SchemaInitializingQueries(params)
+	if err != nil {
+		return nil, err
+	}
 
 	table := a.MessagesTable(params.Topic)
 	index := fmt.Sprintf(`"%s_delayed_until_idx"`, strings.ReplaceAll(table, `"`, ""))
@@ -121,5 +124,5 @@ func (a delayedPostgreSQLSchemaAdapter) SchemaInitializingQueries(params SchemaI
 		Query: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s ((metadata->>'%s'))`, index, table, delay.DelayedUntilKey),
 	})
 
-	return queries
+	return queries, nil
 }

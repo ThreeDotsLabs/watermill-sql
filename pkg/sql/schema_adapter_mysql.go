@@ -52,7 +52,7 @@ type DefaultMySQLSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s DefaultMySQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
+func (s DefaultMySQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
 	createMessagesTable := strings.Join([]string{
 		"CREATE TABLE IF NOT EXISTS " + s.MessagesTable(params.Topic) + " (",
 		"`offset` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,",
@@ -63,7 +63,7 @@ func (s DefaultMySQLSchema) SchemaInitializingQueries(params SchemaInitializingQ
 		");",
 	}, "\n")
 
-	return []Query{{Query: createMessagesTable}}
+	return []Query{{Query: createMessagesTable}}, nil
 }
 
 func (s DefaultMySQLSchema) InsertQuery(params InsertQueryParams) (Query, error) {
@@ -89,12 +89,15 @@ func (s DefaultMySQLSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s DefaultMySQLSchema) SelectQuery(params SelectQueryParams) Query {
+func (s DefaultMySQLSchema) SelectQuery(params SelectQueryParams) (Query, error) {
 	nextOffsetParams := NextOffsetQueryParams{
 		Topic:         params.Topic,
 		ConsumerGroup: params.ConsumerGroup,
 	}
-	nextOffsetQuery := params.OffsetsAdapter.NextOffsetQuery(nextOffsetParams)
+	nextOffsetQuery, err := params.OffsetsAdapter.NextOffsetQuery(nextOffsetParams)
+	if err != nil {
+		return Query{}, err
+	}
 
 	// It's important to wrap offset with "`" for MariaDB.
 	// See https://github.com/ThreeDotsLabs/watermill/issues/377
@@ -102,7 +105,7 @@ func (s DefaultMySQLSchema) SelectQuery(params SelectQueryParams) Query {
 		" WHERE `offset` > (" + nextOffsetQuery.Query + ") ORDER BY `offset` ASC" +
 		` LIMIT ` + fmt.Sprintf("%d", s.batchSize())
 
-	return Query{Query: selectQuery, Args: nextOffsetQuery.Args}
+	return Query{Query: selectQuery, Args: nextOffsetQuery.Args}, nil
 }
 
 func (s DefaultMySQLSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {

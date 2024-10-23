@@ -3,6 +3,7 @@ package sql
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -38,7 +39,7 @@ type PostgreSQLQueueSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s PostgreSQLQueueSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query {
+func (s PostgreSQLQueueSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
 	createMessagesTable := ` 
 		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(params.Topic) + ` (
 			"offset" SERIAL PRIMARY KEY,
@@ -50,7 +51,7 @@ func (s PostgreSQLQueueSchema) SchemaInitializingQueries(params SchemaInitializi
 		);
 	`
 
-	return []Query{{Query: createMessagesTable}}
+	return []Query{{Query: createMessagesTable}}, nil
 }
 
 func (s PostgreSQLQueueSchema) InsertQuery(params InsertQueryParams) (Query, error) {
@@ -88,9 +89,9 @@ func (s PostgreSQLQueueSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s PostgreSQLQueueSchema) SelectQuery(params SelectQueryParams) Query {
+func (s PostgreSQLQueueSchema) SelectQuery(params SelectQueryParams) (Query, error) {
 	if params.ConsumerGroup != "" {
-		panic("consumer groups are not supported in PostgreSQLQueueSchema")
+		return Query{}, errors.New("consumer groups are not supported in PostgreSQLQueueSchema")
 	}
 
 	whereParams := GenerateWhereClauseParams{
@@ -115,7 +116,7 @@ func (s PostgreSQLQueueSchema) SelectQuery(params SelectQueryParams) Query {
 		LIMIT ` + fmt.Sprintf("%d", s.batchSize()) + `
 		FOR UPDATE`
 
-	return Query{selectQuery, args}
+	return Query{selectQuery, args}, nil
 }
 
 func (s PostgreSQLQueueSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {

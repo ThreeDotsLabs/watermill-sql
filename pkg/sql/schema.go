@@ -20,13 +20,20 @@ func initializeSchema(
 		return err
 	}
 
-	initializingQueries := schemaAdapter.SchemaInitializingQueries(SchemaInitializingQueriesParams{
+	initializingQueries, err := schemaAdapter.SchemaInitializingQueries(SchemaInitializingQueriesParams{
 		Topic: topic,
 	})
+	if err != nil {
+		return fmt.Errorf("could not generate schema initializing queries: %w", err)
+	}
+
 	if offsetsAdapter != nil {
-		queries := offsetsAdapter.SchemaInitializingQueries(OffsetsSchemaInitializingQueriesParams{
+		queries, err := offsetsAdapter.SchemaInitializingQueries(OffsetsSchemaInitializingQueriesParams{
 			Topic: topic,
 		})
+		if err != nil {
+			return fmt.Errorf("could not generate offset adapter's schema initializing queries: %w", err)
+		}
 		initializingQueries = append(initializingQueries, queries...)
 	}
 

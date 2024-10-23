@@ -180,10 +180,13 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 		}
 	}
 
-	bsq := s.config.OffsetsAdapter.BeforeSubscribingQueries(BeforeSubscribingQueriesParams{
+	bsq, err := s.config.OffsetsAdapter.BeforeSubscribingQueries(BeforeSubscribingQueriesParams{
 		Topic:         topic,
 		ConsumerGroup: s.config.ConsumerGroup,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot get before subscribing queries: %w", err)
+	}
 
 	if len(bsq) >= 1 {
 		err := runInTx(ctx, s.db, func(ctx context.Context, tx *sql.Tx) error {
@@ -285,13 +288,16 @@ func (s *Subscriber) query(
 		}
 	}()
 
-	selectQuery := s.config.SchemaAdapter.SelectQuery(
+	selectQuery, err := s.config.SchemaAdapter.SelectQuery(
 		SelectQueryParams{
 			Topic:          topic,
 			ConsumerGroup:  s.config.ConsumerGroup,
 			OffsetsAdapter: s.config.OffsetsAdapter,
 		},
 	)
+	if err != nil {
+		return false, fmt.Errorf("could not get select query: %w", err)
+	}
 	logger.Trace("Querying message", watermill.LogFields{
 		"query":      selectQuery.Query,
 		"query_args": sqlArgsToLog(selectQuery.Args),
@@ -342,7 +348,7 @@ func (s *Subscriber) query(
 		return true, nil
 	}
 
-	ackQuery := s.config.OffsetsAdapter.AckMessageQuery(
+	ackQuery, err := s.config.OffsetsAdapter.AckMessageQuery(
 		AckMessageQueryParams{
 			Topic:         topic,
 			LastRow:       lastRow,
@@ -350,6 +356,9 @@ func (s *Subscriber) query(
 			ConsumerGroup: s.config.ConsumerGroup,
 		},
 	)
+	if err != nil {
+		return false, fmt.Errorf("could not get ack message query: %w", err)
+	}
 
 	logger.Trace("Executing ack message query", watermill.LogFields{
 		"query":      ackQuery.Query,
@@ -384,7 +393,7 @@ func (s *Subscriber) processMessage(
 		defer cancel()
 	}
 
-	consumedQuery := s.config.OffsetsAdapter.ConsumedMessageQuery(
+	consumedQuery, err := s.config.OffsetsAdapter.ConsumedMessageQuery(
 		ConsumedMessageQueryParams{
 			Topic:         topic,
 			Row:           row,
@@ -392,6 +401,9 @@ func (s *Subscriber) processMessage(
 			ConsumerULID:  s.consumerIdBytes,
 		},
 	)
+	if err != nil {
+		return false, fmt.Errorf("could not get consumed message query: %w", err)
+	}
 	if !consumedQuery.IsZero() {
 		logger.Trace("Executing query to confirm message consumed", watermill.LogFields{
 			"query":      consumedQuery.Args,

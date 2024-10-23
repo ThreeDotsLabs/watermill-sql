@@ -35,7 +35,7 @@ type SchemaAdapter interface {
 
 	// SelectQuery returns the SQL query and arguments
 	// that returns the next unread message for a given consumer group.
-	SelectQuery(params SelectQueryParams) Query
+	SelectQuery(params SelectQueryParams) (Query, error)
 
 	// UnmarshalMessage transforms the Row obtained SelectQuery a Watermill message.
 	// It also returns the offset of the last read message, for the purpose of acking.
@@ -43,7 +43,7 @@ type SchemaAdapter interface {
 
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)
 	// that the appropriate tables exist to write messages to the given topic.
-	SchemaInitializingQueries(params SchemaInitializingQueriesParams) []Query
+	SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error)
 
 	// SubscribeIsolationLevel returns the isolation level that will be used when subscribing.
 	SubscribeIsolationLevel() sql.IsolationLevel

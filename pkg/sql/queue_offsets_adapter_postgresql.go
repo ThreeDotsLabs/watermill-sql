@@ -16,15 +16,15 @@ type PostgreSQLQueueOffsetsAdapter struct {
 	GenerateMessagesTableName func(topic string) string
 }
 
-func (a PostgreSQLQueueOffsetsAdapter) SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) []Query {
-	return []Query{}
+func (a PostgreSQLQueueOffsetsAdapter) SchemaInitializingQueries(params OffsetsSchemaInitializingQueriesParams) ([]Query, error) {
+	return []Query{}, nil
 }
 
-func (a PostgreSQLQueueOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams) Query {
-	return Query{}
+func (a PostgreSQLQueueOffsetsAdapter) NextOffsetQuery(params NextOffsetQueryParams) (Query, error) {
+	return Query{}, nil
 }
 
-func (a PostgreSQLQueueOffsetsAdapter) AckMessageQuery(params AckMessageQueryParams) Query {
+func (a PostgreSQLQueueOffsetsAdapter) AckMessageQuery(params AckMessageQueryParams) (Query, error) {
 	if params.ConsumerGroup != "" {
 		panic("consumer groups are not supported in PostgreSQLQueueOffsetsAdapter")
 	}
@@ -44,7 +44,7 @@ func (a PostgreSQLQueueOffsetsAdapter) AckMessageQuery(params AckMessageQueryPar
 		offsets[i] = row.Offset
 	}
 
-	return Query{ackQuery, []any{pq.Array(offsets)}}
+	return Query{ackQuery, []any{pq.Array(offsets)}}, nil
 }
 
 func (a PostgreSQLQueueOffsetsAdapter) MessagesTable(topic string) string {
@@ -54,10 +54,10 @@ func (a PostgreSQLQueueOffsetsAdapter) MessagesTable(topic string) string {
 	return fmt.Sprintf(`"watermill_%s"`, topic)
 }
 
-func (a PostgreSQLQueueOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQueryParams) Query {
-	return Query{}
+func (a PostgreSQLQueueOffsetsAdapter) ConsumedMessageQuery(params ConsumedMessageQueryParams) (Query, error) {
+	return Query{}, nil
 }
 
-func (a PostgreSQLQueueOffsetsAdapter) BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) []Query {
-	return []Query{}
+func (a PostgreSQLQueueOffsetsAdapter) BeforeSubscribingQueries(params BeforeSubscribingQueriesParams) ([]Query, error) {
+	return []Query{}, nil
 }
