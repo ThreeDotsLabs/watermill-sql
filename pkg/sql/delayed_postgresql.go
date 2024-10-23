@@ -60,9 +60,18 @@ func NewDelayedPostgreSQLPublisher(db *sql.DB, config DelayedPostgreSQLPublisher
 }
 
 type DelayedPostgreSQLSubscriberConfig struct {
+	// OverrideSubscriberConfig allows overriding the default SubscriberConfig.
 	OverrideSubscriberConfig func(config *SubscriberConfig) error
-	DeleteOnAck              bool
-	Logger                   watermill.LoggerAdapter
+
+	// DeleteOnAck deletes the message from the queue when it's acknowledged.
+	DeleteOnAck bool
+
+	// AllowNoDelay allows receiving messages without the delay metadata.
+	// By default, such messages will be skipped.
+	// If set to true, messages without delay metadata will be received immediately.
+	AllowNoDelay bool
+
+	Logger watermill.LoggerAdapter
 }
 
 func (c *DelayedPostgreSQLSubscriberConfig) setDefaults() {
@@ -76,10 +85,16 @@ func (c *DelayedPostgreSQLSubscriberConfig) setDefaults() {
 func NewDelayedPostgreSQLSubscriber(db *sql.DB, config DelayedPostgreSQLSubscriberConfig) (message.Subscriber, error) {
 	config.setDefaults()
 
+	where := fmt.Sprintf("(metadata->>'%v')::timestamptz < NOW() AT TIME ZONE 'UTC'", delay.DelayedUntilKey)
+
+	if config.AllowNoDelay {
+		where += fmt.Sprintf(` OR (metadata->>'%s') IS NULL`, delay.DelayedUntilKey)
+	}
+
 	schemaAdapter := delayedPostgreSQLSchemaAdapter{
 		PostgreSQLQueueSchema: PostgreSQLQueueSchema{
 			GenerateWhereClause: func(params GenerateWhereClauseParams) (string, []any) {
-				return fmt.Sprintf("(metadata->>'%v')::timestamptz < NOW() AT TIME ZONE 'UTC'", delay.DelayedUntilKey), nil
+				return where, nil
 			},
 		},
 	}

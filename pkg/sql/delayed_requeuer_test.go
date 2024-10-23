@@ -3,13 +3,13 @@ package sql_test
 import (
 	"context"
 	"fmt"
-	"github.com/ThreeDotsLabs/watermill"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -28,9 +28,10 @@ func TestDelayedRequeuer(t *testing.T) {
 	require.NoError(t, err)
 
 	delayedRequeuer, err := sql.NewPostgreSQLDelayedRequeuer(sql.DelayedRequeuerConfig{
-		DB:        db,
-		Publisher: publisher,
-		Logger:    logger,
+		DB:           db,
+		RequeueTopic: watermill.NewUUID(),
+		Publisher:    publisher,
+		Logger:       logger,
 	})
 	require.NoError(t, err)
 

@@ -21,7 +21,9 @@ func TestDelayedPostgreSQL(t *testing.T) {
 
 	pub, err := sql.NewDelayedPostgreSQLPublisher(db, sql.DelayedPostgreSQLPublisherConfig{
 		DelayPublisherConfig: delay.PublisherConfig{
-			DefaultDelay: delay.For(150 * time.Millisecond),
+			DefaultDelayGenerator: func(params delay.DefaultDelayGeneratorParams) (delay.Delay, error) {
+				return delay.For(time.Second), nil
+			},
 		},
 		Logger: logger,
 	})
@@ -43,13 +45,11 @@ func TestDelayedPostgreSQL(t *testing.T) {
 	err = pub.Publish(topic, msg)
 	require.NoError(t, err)
 
-	assert.EventuallyWithT(t, func(t *assert.CollectT) {
-		select {
-		case <-messages:
-			t.Errorf("message should not be received")
-		default:
-		}
-	}, time.Millisecond*100, time.Millisecond*10)
+	select {
+	case <-messages:
+		t.Errorf("message should not be received")
+	case <-time.After(time.Millisecond * 200):
+	}
 
 	assert.EventuallyWithT(t, func(t *assert.CollectT) {
 		select {
@@ -57,30 +57,78 @@ func TestDelayedPostgreSQL(t *testing.T) {
 			assert.Equal(t, msg.UUID, received.UUID)
 			received.Ack()
 		default:
+			t.Errorf("message should be received")
 		}
-	}, time.Millisecond*100, time.Millisecond*10)
+	}, time.Second, time.Millisecond*10)
 }
 
-func TestDelayedPostgreSQLNotStrict(t *testing.T) {
+func TestDelayedPostgreSQL_NoDelay(t *testing.T) {
 	t.Parallel()
 
 	db := newPostgreSQL(t)
 
 	pub, err := sql.NewDelayedPostgreSQLPublisher(db, sql.DelayedPostgreSQLPublisherConfig{
 		DelayPublisherConfig: delay.PublisherConfig{
-			DefaultDelay: delay.For(150 * time.Millisecond),
+			AllowNoDelay: true,
 		},
 		Logger: logger,
 	})
 	require.NoError(t, err)
 
-	msg := message.NewMessage(watermill.NewUUID(), []byte("{}"))
+	t.Run("skip_empty", func(t *testing.T) {
+		t.Parallel()
 
-	err = pub.Publish(watermill.NewUUID(), msg)
-	require.Error(t, err)
+		sub, err := sql.NewDelayedPostgreSQLSubscriber(db, sql.DelayedPostgreSQLSubscriberConfig{
+			DeleteOnAck: true,
+			Logger:      logger,
+		})
+		require.NoError(t, err)
 
-	delay.Message(msg, delay.For(10*time.Second))
-	err = pub.Publish(watermill.NewUUID(), msg)
-	require.NoError(t, err)
+		topic := watermill.NewUUID()
 
+		messages, err := sub.Subscribe(context.Background(), topic)
+		require.NoError(t, err)
+
+		msg := message.NewMessage(watermill.NewUUID(), []byte("{}"))
+
+		err = pub.Publish(topic, msg)
+		require.NoError(t, err)
+
+		select {
+		case <-messages:
+			t.Errorf("message should not be received")
+		case <-time.After(time.Second * 2):
+		}
+	})
+
+	t.Run("allow_empty", func(t *testing.T) {
+		t.Parallel()
+
+		sub, err := sql.NewDelayedPostgreSQLSubscriber(db, sql.DelayedPostgreSQLSubscriberConfig{
+			DeleteOnAck:  true,
+			AllowNoDelay: true,
+			Logger:       logger,
+		})
+		require.NoError(t, err)
+
+		topic := watermill.NewUUID()
+
+		messages, err := sub.Subscribe(context.Background(), topic)
+		require.NoError(t, err)
+
+		msg := message.NewMessage(watermill.NewUUID(), []byte("{}"))
+
+		err = pub.Publish(topic, msg)
+		require.NoError(t, err)
+
+		assert.EventuallyWithT(t, func(t *assert.CollectT) {
+			select {
+			case received := <-messages:
+				assert.Equal(t, msg.UUID, received.UUID)
+				received.Ack()
+			default:
+				t.Errorf("message should be received")
+			}
+		}, time.Second*2, time.Millisecond*10)
+	})
 }
