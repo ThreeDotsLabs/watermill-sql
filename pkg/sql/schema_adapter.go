@@ -8,23 +8,42 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
+type InsertQueryParams struct {
+	Topic string
+	Msgs  message.Messages
+}
+
+type SelectQueryParams struct {
+	Topic          string
+	ConsumerGroup  string
+	OffsetsAdapter OffsetsAdapter
+}
+
+type UnmarshalMessageParams struct {
+	Row Scanner
+}
+
+type SchemaInitializingQueriesParams struct {
+	Topic string
+}
+
 // SchemaAdapter produces the SQL queries and arguments appropriately for a specific schema and dialect
 // It also transforms sql.Rows into Watermill messages.
 type SchemaAdapter interface {
 	// InsertQuery returns the SQL query and arguments that will insert the Watermill message into the SQL storage.
-	InsertQuery(topic string, msgs message.Messages) (Query, error)
+	InsertQuery(params InsertQueryParams) (Query, error)
 
 	// SelectQuery returns the SQL query and arguments
 	// that returns the next unread message for a given consumer group.
-	SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) Query
+	SelectQuery(params SelectQueryParams) (Query, error)
 
 	// UnmarshalMessage transforms the Row obtained SelectQuery a Watermill message.
 	// It also returns the offset of the last read message, for the purpose of acking.
-	UnmarshalMessage(row Scanner) (Row, error)
+	UnmarshalMessage(params UnmarshalMessageParams) (Row, error)
 
 	// SchemaInitializingQueries returns SQL queries which will make sure (CREATE IF NOT EXISTS)
 	// that the appropriate tables exist to write messages to the given topic.
-	SchemaInitializingQueries(topic string) []Query
+	SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error)
 
 	// SubscribeIsolationLevel returns the isolation level that will be used when subscribing.
 	SubscribeIsolationLevel() sql.IsolationLevel

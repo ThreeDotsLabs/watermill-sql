@@ -27,7 +27,7 @@ type DefaultPostgreSQLSchema struct {
 	SubscribeBatchSize int
 }
 
-func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query {
+func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
 	// theoretically this primary key allows duplicate offsets for same transaction_id
 	// but in practice it should not happen with SERIAL, so we can keep one index and make it more
 	// storage efficient
@@ -35,28 +35,28 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(topic string) []Query
 	// it's intended that transaction_id is first in the index, because we are using it alone
 	// in the WHERE clause
 	createMessagesTable := ` 
-		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(topic) + ` (
+		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(params.Topic) + ` (
 			"offset" BIGSERIAL,
 			"uuid" VARCHAR(36) NOT NULL,
 			"created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			"payload" ` + s.PayloadColumnType(topic) + ` DEFAULT NULL,
+			"payload" ` + s.PayloadColumnType(params.Topic) + ` DEFAULT NULL,
 			"metadata" JSON DEFAULT NULL,
 			"transaction_id" xid8 NOT NULL,
 			PRIMARY KEY ("transaction_id", "offset")
 		);
 	`
 
-	return []Query{{Query: createMessagesTable}}
+	return []Query{{Query: createMessagesTable}}, nil
 }
 
-func (s DefaultPostgreSQLSchema) InsertQuery(topic string, msgs message.Messages) (Query, error) {
+func (s DefaultPostgreSQLSchema) InsertQuery(params InsertQueryParams) (Query, error) {
 	insertQuery := fmt.Sprintf(
 		`INSERT INTO %s (uuid, payload, metadata, transaction_id) VALUES %s`,
-		s.MessagesTable(topic),
-		defaultInsertMarkers(len(msgs)),
+		s.MessagesTable(params.Topic),
+		defaultInsertMarkers(len(params.Msgs)),
 	)
 
-	args, err := defaultInsertArgs(msgs)
+	args, err := defaultInsertArgs(params.Msgs)
 	if err != nil {
 		return Query{}, err
 	}
@@ -84,10 +84,18 @@ func (s DefaultPostgreSQLSchema) batchSize() int {
 	return s.SubscribeBatchSize
 }
 
-func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string, offsetsAdapter OffsetsAdapter) Query {
+func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) (Query, error) {
 	// Query inspired by https://event-driven.io/en/ordering_in_postgres_outbox/
 
-	nextOffsetQuery := offsetsAdapter.NextOffsetQuery(topic, consumerGroup)
+	nextOffsetParams := NextOffsetQueryParams{
+		Topic:         params.Topic,
+		ConsumerGroup: params.ConsumerGroup,
+	}
+
+	nextOffsetQuery, err := params.OffsetsAdapter.NextOffsetQuery(nextOffsetParams)
+	if err != nil {
+		return Query{}, err
+	}
 
 	// We are using subquery to avoid problems with query planner mis-estimating
 	// and performing expensive index scans, read more:
@@ -146,7 +154,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string,
 			` + nextOffsetQuery.Query + `
 		)
 
-		SELECT "offset", transaction_id, uuid, payload, metadata FROM ` + s.MessagesTable(topic) + `
+		SELECT "offset", transaction_id, uuid, payload, metadata FROM ` + s.MessagesTable(params.Topic) + `
 
 		WHERE 
 		(
@@ -166,14 +174,14 @@ func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string,
 		"offset" ASC
 	LIMIT ` + fmt.Sprintf("%d", s.batchSize())
 
-	return Query{selectQuery, nextOffsetQuery.Args}
+	return Query{selectQuery, nextOffsetQuery.Args}, nil
 }
 
-func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Scanner) (Row, error) {
+func (s DefaultPostgreSQLSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {
 	r := Row{}
 	var transactionID int64
 
-	err := row.Scan(&r.Offset, &transactionID, &r.UUID, &r.Payload, &r.Metadata)
+	err := params.Row.Scan(&r.Offset, &transactionID, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {
 		return Row{}, fmt.Errorf("could not scan message row: %w", err)
 	}
