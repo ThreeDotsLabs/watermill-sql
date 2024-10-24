@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/components/requeuer"
@@ -44,8 +45,8 @@ type DelayedRequeuerConfig struct {
 	// GeneratePublishTopic is a function that generates the topic where the message should be published after requeue.
 	// Defaults to getting the original topic from the message metadata (provided by the PoisonQueue middleware).
 	GeneratePublishTopic func(params requeuer.GeneratePublishTopicParams) (string, error)
-	// DelayOnErrorConfig is a configuration for the DelayOnError middleware. Optional
-	DelayOnErrorConfig *middleware.DelayOnErrorConfig
+	// DelayOnError middleware. Optional
+	DelayOnError *middleware.DelayOnError
 
 	Logger watermill.LoggerAdapter
 }
@@ -65,8 +66,12 @@ func (c *DelayedRequeuerConfig) setDefaults() {
 		}
 	}
 
-	if c.DelayOnErrorConfig == nil {
-		c.DelayOnErrorConfig = &middleware.DelayOnErrorConfig{}
+	if c.DelayOnError == nil {
+		c.DelayOnError = &middleware.DelayOnError{
+			InitialInterval: time.Second * 10,
+			MaxInterval:     time.Second * 10,
+			Multiplier:      1,
+		}
 	}
 
 	if c.Logger == nil {
@@ -127,7 +132,7 @@ func NewPostgreSQLDelayedRequeuer(config DelayedRequeuerConfig) (*DelayedRequeue
 	return &DelayedRequeuer{
 		middleware: []message.HandlerMiddleware{
 			poisonQueue,
-			middleware.NewDelayOnError(*config.DelayOnErrorConfig).Middleware,
+			config.DelayOnError.Middleware,
 		},
 		requeuer: requeuer,
 	}, nil
