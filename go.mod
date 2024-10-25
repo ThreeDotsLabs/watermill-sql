@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.23.0
 
 require (
-	github.com/ThreeDotsLabs/watermill v1.4.0-rc.1.0.20241024100330-cb068b72e948
+	github.com/ThreeDotsLabs/watermill v1.4.0-rc.2
 	github.com/go-sql-driver/mysql v1.4.1
 	github.com/jackc/pgx/v4 v4.18.2
 	github.com/lib/pq v1.10.2
