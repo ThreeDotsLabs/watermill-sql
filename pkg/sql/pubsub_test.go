@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill-sql/v3/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/subscriber"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
@@ -201,6 +201,45 @@ func createPgxPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscri
 	return createPgxPostgreSQLPubSubWithConsumerGroup(t, "test")
 }
 
+func createPostgreSQLQueue(t *testing.T, db *stdSQL.DB) (message.Publisher, message.Subscriber) {
+	schemaAdapter := sql.PostgreSQLQueueSchema{
+		GeneratePayloadType: func(topic string) string {
+			return "BYTEA"
+		},
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_%s"`, topic)
+		},
+	}
+	offsetsAdapter := sql.PostgreSQLQueueOffsetsAdapter{
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_%s"`, topic)
+		},
+	}
+
+	publisher, err := sql.NewPublisher(
+		db,
+		sql.PublisherConfig{
+			SchemaAdapter: schemaAdapter,
+		},
+		logger,
+	)
+	require.NoError(t, err)
+
+	subscriber, err := sql.NewSubscriber(
+		db,
+		sql.SubscriberConfig{
+			PollInterval:   1 * time.Millisecond,
+			ResendInterval: 5 * time.Millisecond,
+			SchemaAdapter:  schemaAdapter,
+			OffsetsAdapter: offsetsAdapter,
+		},
+		logger,
+	)
+	require.NoError(t, err)
+
+	return publisher, subscriber
+}
+
 func TestMySQLPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
@@ -252,6 +291,46 @@ func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 		features,
 		createPgxPostgreSQLPubSub,
 		createPgxPostgreSQLPubSubWithConsumerGroup,
+	)
+}
+
+func TestPostgreSQLQueue(t *testing.T) {
+	t.Parallel()
+
+	features := tests.Features{
+		ConsumerGroups:      false,
+		ExactlyOnceDelivery: true,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		func(t *testing.T) (message.Publisher, message.Subscriber) {
+			return createPostgreSQLQueue(t, newPostgreSQL(t))
+		},
+		nil,
+	)
+}
+
+func TestPgxPostgreSQLQueue(t *testing.T) {
+	t.Parallel()
+
+	features := tests.Features{
+		ConsumerGroups:      false,
+		ExactlyOnceDelivery: true,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		func(t *testing.T) (message.Publisher, message.Subscriber) {
+			return createPostgreSQLQueue(t, newPgxPostgreSQL(t))
+		},
+		nil,
 	)
 }
 
@@ -586,7 +665,12 @@ func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
 	<-messages // wait for the subscriber to finish
 
 	schemAdapterBatch1 := newPostgresSchemaAdapter(1)
-	q := schemAdapterBatch1.SelectQuery(topicName, "", offsetsAdapter)
+	q, err := schemAdapterBatch1.SelectQuery(sql.SelectQueryParams{
+		Topic:          topicName,
+		ConsumerGroup:  "",
+		OffsetsAdapter: offsetsAdapter,
+	})
+	require.NoError(t, err)
 
 	var analyseResult string
 
