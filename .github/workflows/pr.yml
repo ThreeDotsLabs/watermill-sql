@@ -1,6 +1,6 @@
 name: pr
 on:
-  pr:
+  pull_request:
   push:
     branches-ignore:
       - master
