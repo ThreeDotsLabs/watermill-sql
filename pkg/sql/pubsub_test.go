@@ -5,12 +5,14 @@ import (
 	stdSQL "database/sql"
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
-	wpgx "github.com/ThreeDotsLabs/watermill-sql/v3/pkg/pgx"
-	"github.com/ThreeDotsLabs/watermill-sql/v3/pkg/sql"
+	wpgx "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/pgx"
+	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/subscriber"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
@@ -146,14 +148,16 @@ func newMySQLOffsetsAdapter() sql.DefaultMySQLOffsetsAdapter {
 	}
 }
 
-func newMySQLSchemaAdapter(batchSize int) *testMySQLSchema {
-	return &testMySQLSchema{
-		sql.DefaultMySQLSchema{
-			GenerateMessagesTableName: func(topic string) string {
-				return fmt.Sprintf("`test_%s`", topic)
-			},
-			SubscribeBatchSize: batchSize,
+func newMySQLSchemaAdapter(batchSize int) *sql.DefaultMySQLSchema {
+	return &sql.DefaultMySQLSchema{
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf("`test_%s`", topic)
 		},
+		GeneratePayloadType: func(topic string) string {
+			// payload is a VARBINARY(255) instead of JSON; tests don't presuppose JSON-marshallable payloads
+			return "VARBINARY(255)"
+		},
+		SubscribeBatchSize: batchSize,
 	}
 }
 
@@ -179,23 +183,25 @@ func newPostgresOffsetsAdapter() sql.DefaultPostgreSQLOffsetsAdapter {
 	}
 }
 
-func newPostgresSchemaAdapter(batchSize int) *testPostgreSQLSchema {
-	return &testPostgreSQLSchema{
-		sql.DefaultPostgreSQLSchema{
-			GenerateMessagesTableName: func(topic string) string {
-				return fmt.Sprintf(`"test_%s"`, topic)
-			},
-			SubscribeBatchSize: batchSize,
+func newPostgresSchemaAdapter(batchSize int) *sql.DefaultPostgreSQLSchema {
+	return &sql.DefaultPostgreSQLSchema{
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_%s"`, topic)
 		},
+		GeneratePayloadType: func(topic string) string {
+			return "BYTEA"
+		},
+		SubscribeBatchSize: batchSize,
 	}
 }
 
 func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
-	schemaAdapter := &testPostgreSQLSchema{
-		sql.DefaultPostgreSQLSchema{
-			GenerateMessagesTableName: func(topic string) string {
-				return fmt.Sprintf(`"test_%s"`, topic)
-			},
+	schemaAdapter := &sql.DefaultPostgreSQLSchema{
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_%s"`, topic)
+		},
+		GeneratePayloadType: func(topic string) string {
+			return "BYTEA"
 		},
 	}
 
@@ -235,6 +241,45 @@ func createPgxPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscri
 
 func createPgxPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 	return createPgxPubSubWithConsumerGroup(t, "test")
+}
+
+func createPostgreSQLQueue(t *testing.T, db *stdSQL.DB) (message.Publisher, message.Subscriber) {
+	schemaAdapter := sql.PostgreSQLQueueSchema{
+		GeneratePayloadType: func(topic string) string {
+			return "BYTEA"
+		},
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_%s"`, topic)
+		},
+	}
+	offsetsAdapter := sql.PostgreSQLQueueOffsetsAdapter{
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_%s"`, topic)
+		},
+	}
+
+	publisher, err := sql.NewPublisher(
+		db,
+		sql.PublisherConfig{
+			SchemaAdapter: schemaAdapter,
+		},
+		logger,
+	)
+	require.NoError(t, err)
+
+	subscriber, err := sql.NewSubscriber(
+		db,
+		sql.SubscriberConfig{
+			PollInterval:   1 * time.Millisecond,
+			ResendInterval: 5 * time.Millisecond,
+			SchemaAdapter:  schemaAdapter,
+			OffsetsAdapter: offsetsAdapter,
+		},
+		logger,
+	)
+	require.NoError(t, err)
+
+	return publisher, subscriber
 }
 
 func TestMySQLPublishSubscribe(t *testing.T) {
@@ -306,6 +351,46 @@ func TestPgxPublishSubscribe(t *testing.T) {
 		features,
 		createPgxPubSub,
 		createPgxPubSubWithConsumerGroup,
+	)
+}
+
+func TestPostgreSQLQueue(t *testing.T) {
+	t.Parallel()
+
+	features := tests.Features{
+		ConsumerGroups:      false,
+		ExactlyOnceDelivery: true,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		func(t *testing.T) (message.Publisher, message.Subscriber) {
+			return createPostgreSQLQueue(t, newPostgreSQL(t))
+		},
+		nil,
+	)
+}
+
+func TestPgxPostgreSQLQueue(t *testing.T) {
+	t.Parallel()
+
+	features := tests.Features{
+		ConsumerGroups:      false,
+		ExactlyOnceDelivery: true,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		func(t *testing.T) (message.Publisher, message.Subscriber) {
+			return createPostgreSQLQueue(t, newPgxPostgreSQL(t))
+		},
+		nil,
 	)
 }
 
@@ -640,4 +725,123 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 			)
 		})
 	}
+}
+
+func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
+	// this test should be not executed in Parallel to not disturb performance measurements
+
+	db := newPostgreSQL(t)
+
+	offsetsAdapter := newPostgresOffsetsAdapter()
+
+	pub, sub := newPubSub(
+		t,
+		db,
+		"test",
+		newPostgresSchemaAdapter(1000),
+		offsetsAdapter,
+	)
+
+	topicName := "topic_" + watermill.NewUUID()
+
+	err := sub.(message.SubscribeInitializer).SubscribeInitialize(topicName)
+	require.NoError(t, err)
+
+	messagesCount := 100_000
+	if testing.Short() {
+		messagesCount = 1_000
+	}
+	tests.AddSimpleMessagesParallel(t, messagesCount, pub, topicName, 50)
+
+	subscribeCtx, cancelSubscribe := context.WithCancel(context.Background())
+
+	messages, err := sub.Subscribe(subscribeCtx, topicName)
+	require.NoError(t, err)
+
+	// we want to consume most of the messages,
+	// but not all to catch performance issues with more unacked messages
+	messagesToConsume := int(float64(messagesCount) * 0.8)
+	_, all := subscriber.BulkRead(messages, messagesToConsume, time.Minute)
+	assert.True(t, all)
+
+	cancelSubscribe()
+	<-messages // wait for the subscriber to finish
+
+	schemAdapterBatch1 := newPostgresSchemaAdapter(1)
+	q, err := schemAdapterBatch1.SelectQuery(sql.SelectQueryParams{
+		Topic:          topicName,
+		ConsumerGroup:  "",
+		OffsetsAdapter: offsetsAdapter,
+	})
+	require.NoError(t, err)
+
+	var analyseResult string
+
+	res, err := db.Query("EXPLAIN ANALYZE\n"+q.Query, q.Args...)
+	require.NoError(t, err)
+
+	for res.Next() {
+		var line string
+		err := res.Scan(&line)
+		require.NoError(t, err)
+		analyseResult += line + "\n"
+	}
+	require.NoError(t, res.Close())
+
+	t.Log(analyseResult)
+
+	rowsRemovedByFilter := findRowsRemovedByFilterInAnalyze(analyseResult)
+
+	for _, i := range rowsRemovedByFilter {
+		assert.LessOrEqual(
+			t,
+			i,
+			1,
+			"too many rows removed by filter - it's likely a performance regression",
+		)
+	}
+
+	duration := extractDurationFromAnalyze(t, analyseResult)
+
+	// TBD if it will be stable in CI
+	assert.LessOrEqual(t, duration, time.Millisecond, "query duration is too long")
+}
+
+func findRowsRemovedByFilterInAnalyze(input string) []int {
+	pattern := `Rows Removed by Filter: (\d+)`
+	re := regexp.MustCompile(pattern)
+
+	matches := re.FindAllStringSubmatch(input, -1)
+
+	result := make([]int, 0, len(matches))
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			value, err := strconv.Atoi(match[1])
+			if err == nil {
+				result = append(result, value)
+			}
+		}
+	}
+
+	return result
+}
+
+func extractDurationFromAnalyze(t *testing.T, s string) time.Duration {
+	t.Helper()
+
+	// Regular expression to match "Execution Time: X.XXX ms" pattern
+	re := regexp.MustCompile(`Execution Time:\s*(\d+(?:\.\d+)?)\s*ms`)
+
+	match := re.FindStringSubmatch(s)
+	if len(match) != 2 {
+		t.Fatalf("cannot find duration in the string: %s", s)
+	}
+
+	durationStr := match[1]
+
+	parsed, err := time.ParseDuration(durationStr + "ms")
+	require.NoError(t, err)
+
+	return parsed
 }

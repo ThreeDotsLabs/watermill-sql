@@ -6,7 +6,7 @@ services:
   mysql:
     image: mysql:8.0
     restart: unless-stopped
-    command: [ "--max_connections=500" ]
+    command: [ "--max_connections=5000" ]
     ports:
       - 3306:3306
     environment:
@@ -16,7 +16,7 @@ services:
   postgres:
     image: postgres:15.3
     restart: unless-stopped
-    command: postgres -c 'max_connections=500'
+    command: postgres -c 'max_connections=5000'
     ports:
       - 5432:5432
     environment:

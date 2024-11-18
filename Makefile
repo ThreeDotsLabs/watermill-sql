@@ -1,5 +1,5 @@
 up:
-	docker-compose up -d
+	docker compose up -d
 
 test:
 	go test -timeout=30m ./...
@@ -23,6 +23,7 @@ test_reconnect:
 
 wait:
 	go run github.com/ThreeDotsLabs/wait-for@latest localhost:3306 localhost:5432
+	go run ./internal/wait-for
 
 build:
 	go build ./...

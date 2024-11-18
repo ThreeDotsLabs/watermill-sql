@@ -2,9 +2,9 @@ package sql
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
-
-	"github.com/pkg/errors"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -53,7 +53,7 @@ type Publisher struct {
 func NewPublisher(db ContextExecutor, config PublisherConfig, logger watermill.LoggerAdapter) (*Publisher, error) {
 	config.setDefaults()
 	if err := config.validate(); err != nil {
-		return nil, errors.Wrap(err, "invalid config")
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	if db == nil {
@@ -103,9 +103,12 @@ func (p *Publisher) Publish(topic string, messages ...*message.Message) (err err
 		return err
 	}
 
-	insertQuery, err := p.config.SchemaAdapter.InsertQuery(topic, messages)
+	insertQuery, err := p.config.SchemaAdapter.InsertQuery(InsertQueryParams{
+		Topic: topic,
+		Msgs:  messages,
+	})
 	if err != nil {
-		return errors.Wrap(err, "cannot create insert query")
+		return fmt.Errorf("cannot create insert query: %w", err)
 	}
 
 	p.logger.Trace("Inserting message to SQL", watermill.LogFields{
@@ -115,7 +118,7 @@ func (p *Publisher) Publish(topic string, messages ...*message.Message) (err err
 
 	_, err = p.db.ExecContext(context.Background(), insertQuery.Query, insertQuery.Args...)
 	if err != nil {
-		return errors.Wrap(err, "could not insert message as row")
+		return fmt.Errorf("could not insert message as row: %w", err)
 	}
 
 	return nil
@@ -138,7 +141,7 @@ func (p *Publisher) initializeSchema(topic string) error {
 		p.config.SchemaAdapter,
 		nil,
 	); err != nil {
-		return errors.Wrap(err, "cannot initialize schema")
+		return fmt.Errorf("cannot initialize schema: %w", err)
 	}
 
 	p.initializedTopics.Store(topic, struct{}{})

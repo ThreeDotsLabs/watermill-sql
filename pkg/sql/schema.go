@@ -2,9 +2,9 @@ package sql
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/pkg/errors"
 )
 
 type RequiresTransaction interface {
@@ -25,9 +25,21 @@ func initializeSchema(
 		return err
 	}
 
-	initializingQueries := schemaAdapter.SchemaInitializingQueries(topic)
+	initializingQueries, err := schemaAdapter.SchemaInitializingQueries(SchemaInitializingQueriesParams{
+		Topic: topic,
+	})
+	if err != nil {
+		return fmt.Errorf("could not generate schema initializing queries: %w", err)
+	}
+
 	if offsetsAdapter != nil {
-		initializingQueries = append(initializingQueries, offsetsAdapter.SchemaInitializingQueries(topic)...)
+		queries, err := offsetsAdapter.SchemaInitializingQueries(OffsetsSchemaInitializingQueriesParams{
+			Topic: topic,
+		})
+		if err != nil {
+			return fmt.Errorf("could not generate offset adapter's schema initializing queries: %w", err)
+		}
+		initializingQueries = append(initializingQueries, queries...)
 	}
 
 	logger.Info("Initializing subscriber schema", watermill.LogFields{
@@ -42,9 +54,9 @@ func initializeSchema(
 	}
 
 	for _, q := range initializingQueries {
-		_, err := db.ExecContext(ctx, q.Query, q.Args...)
+		_, err = db.ExecContext(ctx, q.Query, q.Args...)
 		if err != nil {
-			return errors.Wrap(err, "could not initialize schema")
+			return fmt.Errorf("could not initialize schema: %w", err)
 		}
 	}
 

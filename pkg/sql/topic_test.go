@@ -5,12 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill-sql/v3/pkg/sql"
-	"github.com/ThreeDotsLabs/watermill/message"
-
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 func TestValidateTopicName(t *testing.T) {
@@ -22,11 +21,11 @@ func TestValidateTopicName(t *testing.T) {
 
 	err := publisher.Publish(cleverlyNamedTopic, message.NewMessage("uuid", nil))
 	require.Error(t, err)
-	assert.Equal(t, sql.ErrInvalidTopicName, errors.Cause(err))
+	assert.ErrorIs(t, err, sql.ErrInvalidTopicName)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_, err = subscriber.Subscribe(ctx, cleverlyNamedTopic)
 	require.Error(t, err)
-	assert.Equal(t, sql.ErrInvalidTopicName, errors.Cause(err))
+	assert.ErrorIs(t, err, sql.ErrInvalidTopicName)
 }
