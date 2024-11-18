@@ -1,5 +1,6 @@
 name: pr
 on:
+  pr:
   push:
     branches-ignore:
       - master
