@@ -119,7 +119,11 @@ type Subscriber struct {
 	logger watermill.LoggerAdapter
 }
 
-func NewSubscriber(db Beginner, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
+func NewSubscriber(db SQLBeginner, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
+	return NewSubscriberV2(StdSQLBeginner{db}, config, logger)
+}
+
+func NewSubscriberV2(db Beginner, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
@@ -189,7 +193,7 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 	}
 
 	if len(bsq) >= 1 {
-		err := runInTx(ctx, s.db, func(ctx context.Context, tx *sql.Tx) error {
+		err := runInTx(ctx, s.db, func(ctx context.Context, tx Tx) error {
 			for _, q := range bsq {
 				s.logger.Debug("Executing before subscribing query", watermill.LogFields{
 					"query": q,
@@ -383,7 +387,7 @@ func (s *Subscriber) processMessage(
 	ctx context.Context,
 	topic string,
 	row Row,
-	tx *sql.Tx,
+	tx Tx,
 	out chan *message.Message,
 	logger watermill.LoggerAdapter,
 ) (bool, error) {

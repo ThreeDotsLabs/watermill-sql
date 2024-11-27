@@ -11,23 +11,25 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
+	wpgx "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/pgx"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/subscriber"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	driver "github.com/go-sql-driver/mysql"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	logger = watermill.NewStdLogger(true, false)
+	logger = watermill.NewStdLogger(false, false)
 )
 
-func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
+func newPubSub(t *testing.T, db sql.Beginner, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
 	publisher, err := sql.NewPublisher(
 		db,
 		sql.PublisherConfig{
@@ -54,7 +56,7 @@ func newPubSub(t *testing.T, db *stdSQL.DB, consumerGroup string, schemaAdapter 
 	return publisher, subscriber
 }
 
-func newMySQL(t *testing.T) *stdSQL.DB {
+func newMySQL(t *testing.T) sql.Beginner {
 	addr := os.Getenv("WATERMILL_TEST_MYSQL_HOST")
 	if addr == "" {
 		addr = "localhost"
@@ -72,10 +74,10 @@ func newMySQL(t *testing.T) *stdSQL.DB {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	return db
+	return sql.StdSQLBeginner{DB: db}
 }
 
-func newPostgreSQL(t *testing.T) *stdSQL.DB {
+func newPostgreSQL(t *testing.T) sql.Beginner {
 	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
 	if addr == "" {
 		addr = "localhost"
@@ -88,10 +90,10 @@ func newPostgreSQL(t *testing.T) *stdSQL.DB {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	return db
+	return sql.StdSQLBeginner{DB: db}
 }
 
-func newPgxPostgreSQL(t *testing.T) *stdSQL.DB {
+func newPgxPostgreSQL(t *testing.T) sql.Beginner {
 	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
 	if addr == "" {
 		addr = "localhost"
@@ -106,7 +108,26 @@ func newPgxPostgreSQL(t *testing.T) *stdSQL.DB {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	return db
+	return sql.StdSQLBeginner{DB: db}
+}
+
+func newPgx(t *testing.T) wpgx.Beginner {
+	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
+	if addr == "" {
+		addr = "localhost"
+	}
+
+	connStr := fmt.Sprintf("postgres://watermill:password@%s/watermill?sslmode=disable", addr)
+	conf, err := pgxpool.ParseConfig(connStr)
+	require.NoError(t, err)
+
+	db, err := pgxpool.NewWithConfig(context.Background(), conf)
+	require.NoError(t, err)
+
+	err = db.Ping(context.Background())
+	require.NoError(t, err)
+
+	return wpgx.Beginner{Conn: db}
 }
 
 func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
@@ -193,12 +214,33 @@ func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup stri
 	return newPubSub(t, newPgxPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
 }
 
+func createPgxPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+	schemaAdapter := &sql.DefaultPostgreSQLSchema{
+		AdvisoryXActLock: 1,
+		GenerateMessagesTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_pgx_%s"`, topic)
+		},
+	}
+
+	offsetsAdapter := sql.DefaultPostgreSQLOffsetsAdapter{
+		GenerateMessagesOffsetsTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_pgx_offsets_%s"`, topic)
+		},
+	}
+
+	return newPubSub(t, newPgx(t), consumerGroup, schemaAdapter, offsetsAdapter)
+}
+
 func createPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 	return createPostgreSQLPubSubWithConsumerGroup(t, "test")
 }
 
 func createPgxPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 	return createPgxPostgreSQLPubSubWithConsumerGroup(t, "test")
+}
+
+func createPgxPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
+	return createPgxPubSubWithConsumerGroup(t, "test")
 }
 
 func createPostgreSQLQueue(t *testing.T, db *stdSQL.DB) (message.Publisher, message.Subscriber) {
@@ -294,6 +336,24 @@ func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 	)
 }
 
+func TestPgxPublishSubscribe(t *testing.T) {
+	t.Parallel()
+
+	features := tests.Features{
+		ConsumerGroups:      true,
+		ExactlyOnceDelivery: false,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		createPgxPubSub,
+		createPgxPubSubWithConsumerGroup,
+	)
+}
+
 func TestPostgreSQLQueue(t *testing.T) {
 	t.Parallel()
 
@@ -336,20 +396,29 @@ func TestPgxPostgreSQLQueue(t *testing.T) {
 
 func TestCtxValues(t *testing.T) {
 	pubSubConstructors := []struct {
-		Name        string
-		Constructor func(t *testing.T) (message.Publisher, message.Subscriber)
+		Name         string
+		Constructor  func(t *testing.T) (message.Publisher, message.Subscriber)
+		ExpectedType interface{}
 	}{
 		{
-			Name:        "mysql",
-			Constructor: createMySQLPubSub,
+			Name:         "mysql",
+			Constructor:  createMySQLPubSub,
+			ExpectedType: &sql.StdSQLTx{},
 		},
 		{
-			Name:        "postgresql",
-			Constructor: createPostgreSQLPubSub,
+			Name:         "postgresql",
+			Constructor:  createPostgreSQLPubSub,
+			ExpectedType: &sql.StdSQLTx{},
+		},
+		{
+			Name:         "pgx",
+			Constructor:  createPgxPubSub,
+			ExpectedType: wpgx.Tx{},
 		},
 	}
 
 	for _, constructor := range pubSubConstructors {
+		constructor := constructor
 		pub, sub := constructor.Constructor(t)
 
 		t.Run(constructor.Name, func(t *testing.T) {
@@ -378,7 +447,7 @@ func TestCtxValues(t *testing.T) {
 				tx, ok := sql.TxFromContext(msg.Context())
 				assert.True(t, ok)
 				assert.NotNil(t, t, tx)
-				assert.IsType(t, &stdSQL.Tx{}, tx)
+				assert.IsType(t, constructor.ExpectedType, tx)
 				msg.Ack()
 			case <-time.After(time.Second * 10):
 				t.Fatal("no message received")
@@ -394,7 +463,7 @@ func TestNotMissingMessages(t *testing.T) {
 
 	pubSubs := []struct {
 		Name           string
-		DbConstructor  func(t *testing.T) *stdSQL.DB
+		DbConstructor  func(t *testing.T) sql.Beginner
 		SchemaAdapter  sql.SchemaAdapter
 		OffsetsAdapter sql.OffsetsAdapter
 	}{
@@ -407,6 +476,14 @@ func TestNotMissingMessages(t *testing.T) {
 		{
 			Name:           "postgresql",
 			DbConstructor:  newPostgreSQL,
+			SchemaAdapter:  newPostgresSchemaAdapter(0),
+			OffsetsAdapter: newPostgresOffsetsAdapter(),
+		},
+		{
+			Name: "pgx",
+			DbConstructor: func(t *testing.T) sql.Beginner {
+				return newPgx(t)
+			},
 			SchemaAdapter:  newPostgresSchemaAdapter(0),
 			OffsetsAdapter: newPostgresOffsetsAdapter(),
 		},
@@ -592,6 +669,32 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 				return newPubSub(
 					t,
 					newPostgreSQL(t),
+					"test",
+					newPostgresSchemaAdapter(5),
+					newPostgresOffsetsAdapter(),
+				)
+			},
+			Test: tests.TestConcurrentSubscribe,
+		},
+		{
+			Name: "TestConcurrentSubscribe_pgx_1",
+			Constructor: func(t *testing.T) (message.Publisher, message.Subscriber) {
+				return newPubSub(
+					t,
+					newPgx(t),
+					"test",
+					newPostgresSchemaAdapter(1),
+					newPostgresOffsetsAdapter(),
+				)
+			},
+			Test: tests.TestPublishSubscribe,
+		},
+		{
+			Name: "TestConcurrentSubscribe_pgx_5",
+			Constructor: func(t *testing.T) (message.Publisher, message.Subscriber) {
+				return newPubSub(
+					t,
+					newPgx(t),
 					"test",
 					newPostgresSchemaAdapter(5),
 					newPostgresOffsetsAdapter(),
