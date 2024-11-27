@@ -119,13 +119,8 @@ type Subscriber struct {
 	logger watermill.LoggerAdapter
 }
 
-func NewSubscriber(db interface{}, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
-	sqlDB, ok := db.(SQLBeginner)
-	if !ok {
-		return nil, errors.New("db is not a sql.DB")
-	}
-
-	return NewSubscriberV2(StdSQLBeginner{sqlDB}, config, logger)
+func NewSubscriber(db SQLBeginner, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
+	return NewSubscriberV2(StdSQLBeginner{db}, config, logger)
 }
 
 func NewSubscriberV2(db Beginner, config SubscriberConfig, logger watermill.LoggerAdapter) (*Subscriber, error) {
