@@ -53,6 +53,10 @@ func initializeSchema(
 		}
 	}
 
+	return initialise(ctx, db, initializingQueries)
+}
+
+func initialise(ctx context.Context, db ContextExecutor, initializingQueries []Query) error {
 	for _, q := range initializingQueries {
 		_, err = db.ExecContext(ctx, q.Query, q.Args...)
 		if err != nil {
@@ -70,14 +74,7 @@ func initialiseInTx(ctx context.Context, db ContextExecutor, initializingQueries
 	}
 
 	err := runInTx(ctx, beginner, func(ctx context.Context, tx Tx) error {
-		for _, q := range initializingQueries {
-			_, err := tx.ExecContext(ctx, q.Query, q.Args...)
-			if err != nil {
-				return errors.Wrap(err, "could not initialize schema")
-			}
-		}
-
-		return nil
+		return initialise(ctx, tx, initializingQueries)
 	})
 	if err != nil {
 		return errors.Wrap(err, "run in tx")
