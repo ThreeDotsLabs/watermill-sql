@@ -6,7 +6,7 @@ import (
 )
 
 type StdSQLBeginner struct {
-	*sql.DB
+	DB SQLBeginner
 }
 
 type StdSQLTx struct {

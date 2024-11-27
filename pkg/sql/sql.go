@@ -39,6 +39,13 @@ type Beginner interface {
 	ContextExecutor
 }
 
+// SQLBeginner matches the standard library sql.DB and sql.Tx interfaces.
+type SQLBeginner interface {
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
 // sqlArgsToLog is used for "lazy" generating sql args strings to logger
 type sqlArgsToLog []interface{}
 
