@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -28,7 +27,7 @@ func (c *DelayedPostgreSQLPublisherConfig) setDefaults() {
 
 // NewDelayedPostgreSQLPublisher creates a new Publisher that stores messages in PostgreSQL with a delay.
 // The delay can be set per message with the Watermill's components/delay metadata.
-func NewDelayedPostgreSQLPublisher(db *sql.DB, config DelayedPostgreSQLPublisherConfig) (message.Publisher, error) {
+func NewDelayedPostgreSQLPublisher(db ContextExecutor, config DelayedPostgreSQLPublisherConfig) (message.Publisher, error) {
 	config.setDefaults()
 
 	publisherConfig := PublisherConfig{
@@ -82,7 +81,7 @@ func (c *DelayedPostgreSQLSubscriberConfig) setDefaults() {
 
 // NewDelayedPostgreSQLSubscriber creates a new Subscriber that reads messages from PostgreSQL with a delay.
 // The delay can be set per message with the Watermill's components/delay metadata.
-func NewDelayedPostgreSQLSubscriber(db *sql.DB, config DelayedPostgreSQLSubscriberConfig) (message.Subscriber, error) {
+func NewDelayedPostgreSQLSubscriber(db Beginner, config DelayedPostgreSQLSubscriberConfig) (message.Subscriber, error) {
 	config.setDefaults()
 
 	where := fmt.Sprintf("(metadata->>'%v')::timestamptz < NOW() AT TIME ZONE 'UTC'", delay.DelayedUntilKey)

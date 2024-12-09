@@ -25,6 +25,10 @@ type DefaultPostgreSQLSchema struct {
 	//
 	// Default value is 100.
 	SubscribeBatchSize int
+
+	// AdvisoryXActLock if greater than zero will use pg_advisory_xact_lock to lock the transaction which is needed
+	// to concurrently create tables. https://stackoverflow.com/questions/74261789/postgres-create-table-if-not-exists-%E2%87%92-23505
+	AdvisoryXActLock int
 }
 
 func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
@@ -46,7 +50,14 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitiali
 		);
 	`
 
-	return []Query{{Query: createMessagesTable}}, nil
+	queries := []Query{{Query: createMessagesTable}}
+	if s.AdvisoryXActLock > 0 {
+		queries = append([]Query{
+			{Query: fmt.Sprintf("SELECT pg_advisory_xact_lock(%d);", s.AdvisoryXActLock)},
+		}, queries...)
+	}
+
+	return queries, nil
 }
 
 func (s DefaultPostgreSQLSchema) InsertQuery(params InsertQueryParams) (Query, error) {
@@ -221,4 +232,8 @@ func (s DefaultPostgreSQLSchema) PayloadColumnType(topic string) string {
 func (s DefaultPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
 	// For Postgres Repeatable Read is enough.
 	return sql.LevelRepeatableRead
+}
+
+func (s DefaultPostgreSQLSchema) RequiresTransaction() bool {
+	return s.AdvisoryXActLock > 0
 }

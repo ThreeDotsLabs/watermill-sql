@@ -2,7 +2,6 @@ package sql
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 )
@@ -10,7 +9,7 @@ import (
 func runInTx(
 	ctx context.Context,
 	db Beginner,
-	fn func(ctx context.Context, tx *sql.Tx) error,
+	fn func(ctx context.Context, tx Tx) error,
 ) (err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

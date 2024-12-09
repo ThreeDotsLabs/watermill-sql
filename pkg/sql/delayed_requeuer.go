@@ -2,7 +2,6 @@ package sql
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -35,7 +34,7 @@ func (q DelayedRequeuer) Run(ctx context.Context) error {
 // DelayedRequeuerConfig is a configuration for DelayedRequeuer.
 type DelayedRequeuerConfig struct {
 	// DB is a database connection. Required.
-	DB *sql.DB
+	DB Beginner
 
 	// Publisher is a publisher that will be used to publish requeued messages. Required.
 	Publisher message.Publisher
