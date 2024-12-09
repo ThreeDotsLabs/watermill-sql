@@ -4,17 +4,17 @@ import (
 	"context"
 	stdSQL "database/sql"
 	"fmt"
+	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill-sql/v3/pkg/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Conn interface {
 	BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error)
-	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
-	Query(ctx context.Context, sql string, arguments ...interface{}) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error)
 }
 
 type Beginner struct {
@@ -50,16 +50,16 @@ func (c Beginner) BeginTx(ctx context.Context, options *stdSQL.TxOptions) (sql.T
 
 	tx, err := c.Conn.BeginTx(ctx, opts)
 
-	return Tx{tx}, err
+	return &Tx{tx}, err
 }
 
-func (c Beginner) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (c Beginner) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	res, err := c.Conn.Exec(ctx, query, args...)
 
 	return Result{res}, err
 }
 
-func (c Beginner) QueryContext(ctx context.Context, query string, args ...interface{}) (sql.Rows, error) {
+func (c Beginner) QueryContext(ctx context.Context, query string, args ...any) (sql.Rows, error) {
 	rows, err := c.Conn.Query(ctx, query, args...)
 
 	return Rows{rows}, err

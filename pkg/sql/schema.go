@@ -3,6 +3,7 @@ package sql
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 
 	"github.com/ThreeDotsLabs/watermill"
 )
@@ -49,7 +50,7 @@ func initializeSchema(
 	if rt, ok := schemaAdapter.(RequiresTransaction); ok && rt.RequiresTransaction() {
 		err = initialiseInTx(ctx, db, initializingQueries)
 		if err != nil {
-			return errors.Wrap(err, "could not initialize schema in transaction")
+			return fmt.Errorf("could not initialize schema in transaction: %w", err)
 		}
 	}
 
@@ -58,7 +59,7 @@ func initializeSchema(
 
 func initialise(ctx context.Context, db ContextExecutor, initializingQueries []Query) error {
 	for _, q := range initializingQueries {
-		_, err = db.ExecContext(ctx, q.Query, q.Args...)
+		_, err := db.ExecContext(ctx, q.Query, q.Args...)
 		if err != nil {
 			return fmt.Errorf("could not initialize schema: %w", err)
 		}

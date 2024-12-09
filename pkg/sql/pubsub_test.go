@@ -220,6 +220,9 @@ func createPgxPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (messa
 		GenerateMessagesTableName: func(topic string) string {
 			return fmt.Sprintf(`"test_pgx_%s"`, topic)
 		},
+		GeneratePayloadType: func(topic string) string {
+			return "BYTEA"
+		},
 	}
 
 	offsetsAdapter := sql.DefaultPostgreSQLOffsetsAdapter{
@@ -243,7 +246,7 @@ func createPgxPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
 	return createPgxPubSubWithConsumerGroup(t, "test")
 }
 
-func createPostgreSQLQueue(t *testing.T, db *stdSQL.DB) (message.Publisher, message.Subscriber) {
+func createPostgreSQLQueue(t *testing.T, db sql.Beginner) (message.Publisher, message.Subscriber) {
 	schemaAdapter := sql.PostgreSQLQueueSchema{
 		GeneratePayloadType: func(topic string) string {
 			return "BYTEA"
@@ -413,7 +416,7 @@ func TestCtxValues(t *testing.T) {
 		{
 			Name:         "pgx",
 			Constructor:  createPgxPubSub,
-			ExpectedType: wpgx.Tx{},
+			ExpectedType: &wpgx.Tx{},
 		},
 	}
 
@@ -777,7 +780,7 @@ func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
 
 	var analyseResult string
 
-	res, err := db.Query("EXPLAIN ANALYZE\n"+q.Query, q.Args...)
+	res, err := db.QueryContext(context.Background(), "EXPLAIN ANALYZE\n"+q.Query, q.Args...)
 	require.NoError(t, err)
 
 	for res.Next() {
