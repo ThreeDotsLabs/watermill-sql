@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -133,8 +134,11 @@ func (p *Publisher) initializeSchema(topic string) error {
 		return nil
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
+	defer cancel()
+
 	if err := initializeSchema(
-		context.Background(),
+		ctx,
 		topic,
 		p.logger,
 		p.db,

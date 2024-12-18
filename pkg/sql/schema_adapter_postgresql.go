@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -25,6 +26,16 @@ type DefaultPostgreSQLSchema struct {
 	//
 	// Default value is 100.
 	SubscribeBatchSize int
+
+	// InitializeSchemaInTransaction determines if the schema should be initialized in a transaction.
+	// By default, it happens in a transaction due to the following:
+	// https://stackoverflow.com/questions/74261789/postgres-create-table-if-not-exists-%E2%87%92-23505
+	// Flip this to false if you want to initialize the schema without a transaction.
+	InitializeSchemaWithoutTransaction bool
+
+	// InitializeSchemaLock is a PostgreSQL advisory lock to be acquired before initializing the schema.
+	// If empty and InitializeSchemaWithoutTransaction is false, a default will be used.
+	InitializeSchemaLock int
 }
 
 func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
@@ -46,7 +57,19 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitiali
 		);
 	`
 
-	return []Query{{Query: createMessagesTable}}, nil
+	queries := []Query{{Query: createMessagesTable}}
+	if !s.InitializeSchemaWithoutTransaction {
+		lock := DefaultSchemaInitializationLock("watermill")
+		if s.InitializeSchemaLock > 0 {
+			lock = s.InitializeSchemaLock
+		}
+
+		queries = append([]Query{
+			{Query: fmt.Sprintf("SELECT pg_advisory_xact_lock(%d);", lock)},
+		}, queries...)
+	}
+
+	return queries, nil
 }
 
 func (s DefaultPostgreSQLSchema) InsertQuery(params InsertQueryParams) (Query, error) {
@@ -221,4 +244,17 @@ func (s DefaultPostgreSQLSchema) PayloadColumnType(topic string) string {
 func (s DefaultPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
 	// For Postgres Repeatable Read is enough.
 	return sql.LevelRepeatableRead
+}
+
+func (s DefaultPostgreSQLSchema) RequiresTransaction() bool {
+	return !s.InitializeSchemaWithoutTransaction
+}
+
+func DefaultSchemaInitializationLock(appName string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte("schema_init:" + appName))
+
+	// Use only the lower 31 bits to ensure the number is positive
+	// PostgreSQL advisory locks use int32 internally
+	return int(h.Sum32() & 0x7fffffff)
 }

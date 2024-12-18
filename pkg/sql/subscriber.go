@@ -189,7 +189,7 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 	}
 
 	if len(bsq) >= 1 {
-		err := runInTx(ctx, s.db, func(ctx context.Context, tx *sql.Tx) error {
+		err := runInTx(ctx, s.db, func(ctx context.Context, tx Tx) error {
 			for _, q := range bsq {
 				s.logger.Debug("Executing before subscribing query", watermill.LogFields{
 					"query": q,
@@ -383,7 +383,7 @@ func (s *Subscriber) processMessage(
 	ctx context.Context,
 	topic string,
 	row Row,
-	tx *sql.Tx,
+	tx Tx,
 	out chan *message.Message,
 	logger watermill.LoggerAdapter,
 ) (bool, error) {
@@ -496,8 +496,11 @@ func (s *Subscriber) Close() error {
 }
 
 func (s *Subscriber) SubscribeInitialize(topic string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
+	defer cancel()
+
 	return initializeSchema(
-		context.Background(),
+		ctx,
 		topic,
 		s.logger,
 		s.db,

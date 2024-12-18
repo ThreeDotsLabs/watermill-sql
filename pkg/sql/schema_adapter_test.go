@@ -35,7 +35,7 @@ func TestDefaultMySQLSchema(t *testing.T) {
 
 func TestDefaultMySQLSchema_implicit_commit_warning(t *testing.T) {
 	db := newMySQL(t)
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
 
 	schemaAdapter := sql.DefaultMySQLSchema{}
@@ -49,7 +49,7 @@ func TestDefaultMySQLSchema_implicit_commit_warning(t *testing.T) {
 
 func TestDefaultMySQLSchema_implicit_commit(t *testing.T) {
 	db := newMySQL(t)
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
 
 	schemaAdapter := sql.DefaultMySQLSchema{}
