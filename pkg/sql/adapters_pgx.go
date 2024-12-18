@@ -1,11 +1,9 @@
-package pgx
+package sql
 
 import (
 	"context"
 	stdSQL "database/sql"
 	"fmt"
-	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -17,23 +15,34 @@ type Conn interface {
 	Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error)
 }
 
-type Beginner struct {
+type PgxBeginner struct {
 	Conn
 }
 
-type Tx struct {
-	pgx.Tx
+func BeginnerFromPgx(conn Conn) Beginner {
+	return PgxBeginner{conn}
 }
 
-type Result struct {
+type PgxTx struct {
+	pgx.Tx
+	ctx context.Context
+}
+
+func TxFromPgx(tx pgx.Tx) Tx {
+	return PgxTx{
+		Tx: tx,
+	}
+}
+
+type PgxResult struct {
 	pgconn.CommandTag
 }
 
-type Rows struct {
+type PgxRows struct {
 	pgx.Rows
 }
 
-func (c Beginner) BeginTx(ctx context.Context, options *stdSQL.TxOptions) (sql.Tx, error) {
+func (c PgxBeginner) BeginTx(ctx context.Context, options *stdSQL.TxOptions) (Tx, error) {
 	opts := pgx.TxOptions{}
 	if options != nil {
 		iso, err := toPgxIsolationLevel(options.Isolation)
@@ -50,52 +59,49 @@ func (c Beginner) BeginTx(ctx context.Context, options *stdSQL.TxOptions) (sql.T
 
 	tx, err := c.Conn.BeginTx(ctx, opts)
 
-	return &Tx{tx}, err
+	return &PgxTx{
+		Tx:  tx,
+		ctx: ctx,
+	}, err
 }
 
-func (c Beginner) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+func (c PgxBeginner) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
 	res, err := c.Conn.Exec(ctx, query, args...)
 
-	return Result{res}, err
+	return PgxResult{res}, err
 }
 
-func (c Beginner) QueryContext(ctx context.Context, query string, args ...any) (sql.Rows, error) {
+func (c PgxBeginner) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
 	rows, err := c.Conn.Query(ctx, query, args...)
 
-	return Rows{rows}, err
+	return PgxRows{rows}, err
 }
 
-func (t Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+func (t PgxTx) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
 	res, err := t.Tx.Exec(ctx, query, args...)
 
-	return Result{res}, err
+	return PgxResult{res}, err
 }
 
-func (t Tx) QueryContext(ctx context.Context, query string, args ...any) (sql.Rows, error) {
+func (t PgxTx) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
 	rows, err := t.Tx.Query(ctx, query, args...)
 
-	return Rows{rows}, err
+	return PgxRows{rows}, err
 }
 
-func (t Tx) Rollback() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	return t.Tx.Rollback(ctx)
+func (t PgxTx) Rollback() error {
+	return t.Tx.Rollback(t.ctx)
 }
 
-func (t Tx) Commit() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	return t.Tx.Commit(ctx)
+func (t PgxTx) Commit() error {
+	return t.Tx.Commit(t.ctx)
 }
 
-func (p Result) RowsAffected() (int64, error) {
+func (p PgxResult) RowsAffected() (int64, error) {
 	return p.CommandTag.RowsAffected(), nil
 }
 
-func (p Rows) Close() error {
+func (p PgxRows) Close() error {
 	p.Rows.Close()
 
 	return nil
