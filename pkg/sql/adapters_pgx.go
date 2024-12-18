@@ -28,12 +28,6 @@ type PgxTx struct {
 	ctx context.Context
 }
 
-func TxFromPgx(tx pgx.Tx) Tx {
-	return PgxTx{
-		Tx: tx,
-	}
-}
-
 type PgxResult struct {
 	pgconn.CommandTag
 }
@@ -90,7 +84,7 @@ func (t PgxTx) QueryContext(ctx context.Context, query string, args ...any) (Row
 }
 
 func (t PgxTx) Rollback() error {
-	return t.Tx.Rollback(t.ctx)
+	return t.Tx.Rollback(context.WithoutCancel(t.ctx))
 }
 
 func (t PgxTx) Commit() error {
