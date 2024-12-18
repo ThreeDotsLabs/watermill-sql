@@ -27,13 +27,14 @@ type DefaultPostgreSQLSchema struct {
 	// Default value is 100.
 	SubscribeBatchSize int
 
-	// InitializeSchemaInTransaction enables initialization of the schema in a transaction.
-	// May be required for some database drivers, like pgx.
+	// InitializeSchemaInTransaction determines if the schema should be initialized in a transaction.
+	// By default, it happens in a transaction due to the following:
 	// https://stackoverflow.com/questions/74261789/postgres-create-table-if-not-exists-%E2%87%92-23505
-	InitializeSchemaInTransaction bool
+	// Flip this to false if you want to initialize the schema without a transaction.
+	InitializeSchemaWithoutTransaction bool
 
 	// InitializeSchemaLock is a PostgreSQL advisory lock to be acquired before initializing the schema.
-	// If empty and InitializeSchemaInTransaction is true, a default will be used.
+	// If empty and InitializeSchemaWithoutTransaction is false, a default will be used.
 	InitializeSchemaLock int
 }
 
@@ -57,7 +58,7 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitiali
 	`
 
 	queries := []Query{{Query: createMessagesTable}}
-	if s.InitializeSchemaInTransaction {
+	if !s.InitializeSchemaWithoutTransaction {
 		lock := DefaultSchemaInitializationLock("watermill")
 		if s.InitializeSchemaLock > 0 {
 			lock = s.InitializeSchemaLock
@@ -246,7 +247,7 @@ func (s DefaultPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
 }
 
 func (s DefaultPostgreSQLSchema) RequiresTransaction() bool {
-	return s.InitializeSchemaInTransaction
+	return !s.InitializeSchemaWithoutTransaction
 }
 
 func DefaultSchemaInitializationLock(appName string) int {

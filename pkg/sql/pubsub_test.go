@@ -4,6 +4,7 @@ import (
 	"context"
 	stdSQL "database/sql"
 	"fmt"
+	"math/rand"
 	"os"
 	"regexp"
 	"strconv"
@@ -184,6 +185,7 @@ func newPostgresOffsetsAdapter() sql.DefaultPostgreSQLOffsetsAdapter {
 
 func newPostgresSchemaAdapter(batchSize int) *sql.DefaultPostgreSQLSchema {
 	return &sql.DefaultPostgreSQLSchema{
+		InitializeSchemaLock: rand.Intn(1000000),
 		GenerateMessagesTableName: func(topic string) string {
 			return fmt.Sprintf(`"test_%s"`, topic)
 		},
@@ -196,6 +198,7 @@ func newPostgresSchemaAdapter(batchSize int) *sql.DefaultPostgreSQLSchema {
 
 func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
 	schemaAdapter := &sql.DefaultPostgreSQLSchema{
+		InitializeSchemaLock: rand.Intn(1000000),
 		GenerateMessagesTableName: func(topic string) string {
 			return fmt.Sprintf(`"test_%s"`, topic)
 		},
@@ -215,7 +218,7 @@ func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup stri
 
 func createPgxPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
 	schemaAdapter := &sql.DefaultPostgreSQLSchema{
-		InitializeSchemaInTransaction: true,
+		InitializeSchemaLock: rand.Intn(1000000),
 		GenerateMessagesTableName: func(topic string) string {
 			return fmt.Sprintf(`"test_pgx_%s"`, topic)
 		},
