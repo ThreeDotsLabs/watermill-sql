@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
-	wpgx "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/pgx"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/subscriber"
@@ -29,9 +28,9 @@ var (
 	logger = watermill.NewStdLogger(false, false)
 )
 
-func newPubSub(t *testing.T, db sql.Beginner, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
+func newPubSub(t *testing.T, beginner sql.Beginner, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
 	publisher, err := sql.NewPublisher(
-		db,
+		beginner,
 		sql.PublisherConfig{
 			SchemaAdapter: schemaAdapter,
 		},
@@ -40,7 +39,7 @@ func newPubSub(t *testing.T, db sql.Beginner, consumerGroup string, schemaAdapte
 	require.NoError(t, err)
 
 	subscriber, err := sql.NewSubscriber(
-		db,
+		beginner,
 		sql.SubscriberConfig{
 			ConsumerGroup: consumerGroup,
 
@@ -74,7 +73,7 @@ func newMySQL(t *testing.T) sql.Beginner {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	return sql.StdSQLBeginner{DB: db}
+	return sql.BeginnerFromStdSQL(db)
 }
 
 func newPostgreSQL(t *testing.T) sql.Beginner {
@@ -90,7 +89,7 @@ func newPostgreSQL(t *testing.T) sql.Beginner {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	return sql.StdSQLBeginner{DB: db}
+	return sql.BeginnerFromStdSQL(db)
 }
 
 func newPgxPostgreSQL(t *testing.T) sql.Beginner {
@@ -108,10 +107,10 @@ func newPgxPostgreSQL(t *testing.T) sql.Beginner {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	return sql.StdSQLBeginner{DB: db}
+	return sql.BeginnerFromStdSQL(db)
 }
 
-func newPgx(t *testing.T) wpgx.Beginner {
+func newPgx(t *testing.T) sql.Beginner {
 	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
 	if addr == "" {
 		addr = "localhost"
@@ -127,7 +126,7 @@ func newPgx(t *testing.T) wpgx.Beginner {
 	err = db.Ping(context.Background())
 	require.NoError(t, err)
 
-	return wpgx.Beginner{Conn: db}
+	return sql.BeginnerFromPgx(db)
 }
 
 func createMySQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
@@ -416,7 +415,7 @@ func TestCtxValues(t *testing.T) {
 		{
 			Name:         "pgx",
 			Constructor:  createPgxPubSub,
-			ExpectedType: &wpgx.Tx{},
+			ExpectedType: &sql.PgxTx{},
 		},
 	}
 
