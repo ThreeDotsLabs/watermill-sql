@@ -496,8 +496,11 @@ func (s *Subscriber) Close() error {
 }
 
 func (s *Subscriber) SubscribeInitialize(topic string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
+	defer cancel()
+
 	return initializeSchema(
-		context.Background(),
+		ctx,
 		topic,
 		s.logger,
 		s.db,

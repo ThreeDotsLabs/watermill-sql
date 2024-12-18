@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -26,9 +27,14 @@ type DefaultPostgreSQLSchema struct {
 	// Default value is 100.
 	SubscribeBatchSize int
 
-	// AdvisoryXActLock if greater than zero will use pg_advisory_xact_lock to lock the transaction which is needed
-	// to concurrently create tables. https://stackoverflow.com/questions/74261789/postgres-create-table-if-not-exists-%E2%87%92-23505
-	AdvisoryXActLock int
+	// InitializeSchemaInTransaction enables initialization of the schema in a transaction.
+	// May be required for some database drivers, like pgx.
+	// https://stackoverflow.com/questions/74261789/postgres-create-table-if-not-exists-%E2%87%92-23505
+	InitializeSchemaInTransaction bool
+
+	// InitializeSchemaLock is a PostgreSQL advisory lock to be acquired before initializing the schema.
+	// If empty and InitializeSchemaInTransaction is true, a default will be used.
+	InitializeSchemaLock int
 }
 
 func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
@@ -51,9 +57,14 @@ func (s DefaultPostgreSQLSchema) SchemaInitializingQueries(params SchemaInitiali
 	`
 
 	queries := []Query{{Query: createMessagesTable}}
-	if s.AdvisoryXActLock > 0 {
+	if s.InitializeSchemaInTransaction {
+		lock := DefaultSchemaInitializationLock("watermill")
+		if s.InitializeSchemaLock > 0 {
+			lock = s.InitializeSchemaLock
+		}
+
 		queries = append([]Query{
-			{Query: fmt.Sprintf("SELECT pg_advisory_xact_lock(%d);", s.AdvisoryXActLock)},
+			{Query: fmt.Sprintf("SELECT pg_advisory_xact_lock(%d);", lock)},
 		}, queries...)
 	}
 
@@ -235,5 +246,14 @@ func (s DefaultPostgreSQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
 }
 
 func (s DefaultPostgreSQLSchema) RequiresTransaction() bool {
-	return s.AdvisoryXActLock > 0
+	return s.InitializeSchemaInTransaction
+}
+
+func DefaultSchemaInitializationLock(appName string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte("schema_init:" + appName))
+
+	// Use only the lower 31 bits to ensure the number is positive
+	// PostgreSQL advisory locks use int32 internally
+	return int(h.Sum32() & 0x7fffffff)
 }

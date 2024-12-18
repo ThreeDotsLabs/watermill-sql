@@ -215,7 +215,7 @@ func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup stri
 
 func createPgxPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
 	schemaAdapter := &sql.DefaultPostgreSQLSchema{
-		AdvisoryXActLock: 1,
+		InitializeSchemaInTransaction: true,
 		GenerateMessagesTableName: func(topic string) string {
 			return fmt.Sprintf(`"test_pgx_%s"`, topic)
 		},
