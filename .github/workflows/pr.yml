@@ -1,9 +1,6 @@
 name: pr
 on:
   pull_request:
-  push:
-    branches-ignore:
-      - master
 jobs:
   ci:
     uses: ThreeDotsLabs/watermill/.github/workflows/tests.yml@master
