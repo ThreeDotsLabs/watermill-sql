@@ -20,8 +20,9 @@ For bug fixes, include "Fixes #ISSUE" to automatically link to the related issue
 
 -->
 
-### Detail
+### Details
 
+<!-- Describe how you solved the problem or implemented the feature. -->
 
 ### Alternative approaches considered (if applicable)
 
