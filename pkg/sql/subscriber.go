@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/oklog/ulid"
@@ -114,7 +115,7 @@ type Subscriber struct {
 
 	subscribeWg *sync.WaitGroup
 	closing     chan struct{}
-	closed      bool
+	closed      uint32
 
 	logger watermill.LoggerAdapter
 }
@@ -166,7 +167,7 @@ func newSubscriberID() ([]byte, string, error) {
 }
 
 func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *message.Message, err error) {
-	if s.closed {
+	if atomic.LoadUint32(&s.closed) == 1 {
 		return nil, ErrSubscriberClosed
 	}
 
@@ -483,11 +484,9 @@ ResendLoop:
 }
 
 func (s *Subscriber) Close() error {
-	if s.closed {
+	if !atomic.CompareAndSwapUint32(&s.closed, 0, 1) {
 		return nil
 	}
-
-	s.closed = true
 
 	close(s.closing)
 	s.subscribeWg.Wait()
