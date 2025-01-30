@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // DefaultPostgreSQLSchema is a default implementation of SchemaAdapter based on PostgreSQL.
@@ -202,7 +203,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) (Query, e
 
 func (s DefaultPostgreSQLSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {
 	r := Row{}
-	var transactionID int64
+	var transactionID pgtype.Uint64
 
 	err := params.Row.Scan(&r.Offset, &transactionID, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {
