@@ -223,7 +223,7 @@ func (s DefaultPostgreSQLSchema) UnmarshalMessage(params UnmarshalMessageParams)
 
 	r.Msg = msg
 	r.ExtraData = map[string]any{
-		"transaction_id": uint64(transactionID),
+		"transaction_id": transactionID,
 	}
 
 	return r, nil
