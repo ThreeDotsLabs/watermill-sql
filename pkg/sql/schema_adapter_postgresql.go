@@ -2,13 +2,15 @@ package sql
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
+	"strconv"
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // DefaultPostgreSQLSchema is a default implementation of SchemaAdapter based on PostgreSQL.
@@ -178,7 +180,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) (Query, e
 			` + nextOffsetQuery.Query + `
 		)
 
-		SELECT "offset", transaction_id, uuid, payload, metadata FROM ` + s.MessagesTable(params.Topic) + `
+		SELECT "offset", transaction_id::text, uuid, payload, metadata FROM ` + s.MessagesTable(params.Topic) + `
 
 		WHERE 
 		(
@@ -203,7 +205,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) (Query, e
 
 func (s DefaultPostgreSQLSchema) UnmarshalMessage(params UnmarshalMessageParams) (Row, error) {
 	r := Row{}
-	var transactionID pgtype.Uint64
+	var transactionID XID8
 
 	err := params.Row.Scan(&r.Offset, &transactionID, &r.UUID, &r.Payload, &r.Metadata)
 	if err != nil {
@@ -258,4 +260,35 @@ func DefaultSchemaInitializationLock(appName string) int {
 	// Use only the lower 31 bits to ensure the number is positive
 	// PostgreSQL advisory locks use int32 internally
 	return int(h.Sum32() & 0x7fffffff)
+}
+
+type XID8 uint64
+
+func (x *XID8) Scan(src interface{}) error {
+	if src == nil {
+		return errors.New("cannot scan nil value into XID8")
+	}
+
+	switch v := src.(type) {
+	case string:
+		val, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			return err
+		}
+		*x = XID8(val)
+		return nil
+	case []byte:
+		val, err := strconv.ParseUint(string(v), 10, 64)
+		if err != nil {
+			return err
+		}
+		*x = XID8(val)
+		return nil
+	default:
+		return errors.New("unsupported Scan value type for XID8")
+	}
+}
+
+func (x *XID8) Value() (driver.Value, error) {
+	return uint64(*x), nil
 }
