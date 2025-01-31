@@ -18,7 +18,9 @@ type StdSQLTx struct {
 }
 
 func TxFromStdSQL(tx *sql.Tx) Tx {
-	return &StdSQLTx{tx}
+	return &StdSQLTx{
+		Tx: tx,
+	}
 }
 
 // BeginTx converts the stdSQL.Tx struct to our Tx interface

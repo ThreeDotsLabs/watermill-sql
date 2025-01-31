@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/oklog/ulid"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -282,7 +283,9 @@ func (s *Subscriber) query(
 			}
 		} else {
 			commitErr := tx.Commit()
-			if commitErr != nil && !errors.Is(commitErr, sql.ErrTxDone) {
+			if commitErr != nil &&
+				!errors.Is(commitErr, sql.ErrTxDone) &&
+				!errors.Is(commitErr, pgx.ErrTxCommitRollback) {
 				logger.Error("could not commit tx for querying message", commitErr, nil)
 			}
 		}
