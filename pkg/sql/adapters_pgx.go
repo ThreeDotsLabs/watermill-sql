@@ -28,6 +28,12 @@ type PgxTx struct {
 	ctx context.Context
 }
 
+func TxFromPgx(tx pgx.Tx) Tx {
+	return PgxTx{
+		Tx: tx,
+	}
+}
+
 type PgxResult struct {
 	pgconn.CommandTag
 }
