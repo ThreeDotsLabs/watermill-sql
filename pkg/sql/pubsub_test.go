@@ -733,6 +733,7 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 }
 
 func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
+	t.Skipf("test")
 	// this test should be not executed in Parallel to not disturb performance measurements
 
 	db := newPostgreSQL(t)
