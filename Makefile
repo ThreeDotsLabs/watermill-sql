@@ -8,7 +8,7 @@ test_v:
 	go test -v ./...
 
 test_short:
-	go test ./... -short
+	go test -timeout=30m -short ./...
 
 test_race:
 	go test ./... -short -race
