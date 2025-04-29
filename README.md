@@ -1,4 +1,3 @@
-
 # Watermill SQL (Postgres/MySQL) Pub/Sub
 <img align="right" width="200" src="https://watermill.io/img/gopher.svg">
 
