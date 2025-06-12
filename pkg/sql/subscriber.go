@@ -83,7 +83,7 @@ func (c SubscriberConfig) validate() error {
 	if c.AckDeadline == nil {
 		return errors.New("ack deadline is nil")
 	}
-	if c.AckDeadline != nil && *c.AckDeadline <= 0 {
+	if c.AckDeadline != nil && *c.AckDeadline < 0 {
 		return errors.New("ack deadline must be a positive duration")
 	}
 	if c.PollInterval <= 0 {
