@@ -83,7 +83,7 @@ func (c SubscriberConfig) validate() error {
 	if c.AckDeadline == nil {
 		return errors.New("ack deadline is nil")
 	}
-	if c.AckDeadline != nil && *c.AckDeadline <= 0 {
+	if c.AckDeadline != nil && *c.AckDeadline < 0 {
 		return errors.New("ack deadline must be a positive duration")
 	}
 	if c.PollInterval <= 0 {
@@ -248,13 +248,14 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 		noMsg, err := s.query(ctx, topic, out, logger)
 		backoff := s.config.BackoffManager.HandleError(logger, noMsg, err)
 		if backoff != 0 {
-			if err != nil {
-				logger = logger.With(watermill.LogFields{"err": err.Error()})
-			}
-			logger.Trace("Backing off querying", watermill.LogFields{
+			logFields := watermill.LogFields{
 				"wait_time": backoff,
 				"no_msg":    noMsg,
-			})
+			}
+			if err != nil {
+				logFields.Add(watermill.LogFields{"err": err.Error()})
+			}
+			logger.Trace("Backing off querying", logFields)
 		}
 		sleepTime = backoff
 	}
