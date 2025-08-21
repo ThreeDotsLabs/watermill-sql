@@ -269,31 +269,31 @@ func (x *XID8) Scan(src interface{}) error {
 		return errors.New("cannot scan nil value into XID8")
 	}
 
+	// We want to support scanning from various types (different drivers, like lib/pq, pgx, etc.)
 	switch v := src.(type) {
-	// pgx often sends as int64/uint64
 	case int64:
 		if v < 0 {
 			return fmt.Errorf("cannot convert negative int64 %d to XID8", v)
 		}
 		*x = XID8(uint64(v))
 		return nil
-		
+
 	case uint64:
 		*x = XID8(v)
 		return nil
-		
+
 	case int32:
 		if v < 0 {
 			return fmt.Errorf("cannot convert negative int32 %d to XID8", v)
 		}
 		*x = XID8(uint64(v))
 		return nil
-		
+
 	case uint32:
-		*x = XID8(uint64(v))
+		*x = XID8(v)
 		return nil
-		
-	// lib/pq often sends as string
+
+	// pgx
 	case string:
 		if v == "" {
 			*x = 0
@@ -305,44 +305,21 @@ func (x *XID8) Scan(src interface{}) error {
 		}
 		*x = XID8(val)
 		return nil
-		
-	// lib/pq sends as []byte (as we observed)
+
+	// lib/pq
 	case []byte:
 		if len(v) == 0 {
 			*x = 0
 			return nil
 		}
-		
-		// Try binary format first (8 bytes big-endian)
-		if len(v) == 8 {
-			// Check if this looks like binary data
-			binary := true
-			for _, b := range v {
-				if b < 32 || b > 126 {
-					// Non-printable character, likely binary
-					continue
-				}
-				// All printable characters, likely text
-				binary = false
-				break
-			}
-			
-			if binary {
-				val := uint64(v[0])<<56 | uint64(v[1])<<48 | uint64(v[2])<<40 | uint64(v[3])<<32 |
-					uint64(v[4])<<24 | uint64(v[5])<<16 | uint64(v[6])<<8 | uint64(v[7])
-				*x = XID8(val)
-				return nil
-			}
-		}
-		
-		// Fallback to string parsing (most common with lib/pq)
+
 		val, err := strconv.ParseUint(string(v), 10, 64)
 		if err != nil {
 			return fmt.Errorf("cannot parse bytes %q as uint64: %w", string(v), err)
 		}
 		*x = XID8(val)
 		return nil
-		
+
 	default:
 		return fmt.Errorf("cannot scan %T into XID8", src)
 	}
