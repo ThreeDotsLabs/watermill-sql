@@ -733,10 +733,6 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 }
 
 func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
-	if os.Getenv("CI") == "true" {
-		t.Skip("unstable in CI")
-	}
-
 	// this test should be not executed in Parallel to not disturb performance measurements
 
 	db := newPostgreSQL(t)
@@ -757,7 +753,7 @@ func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
 	require.NoError(t, err)
 
 	messagesCount := 100_000
-	if testing.Short() {
+	if testing.Short() || os.Getenv("CI") == "true" {
 		messagesCount = 1_000
 	}
 	tests.AddSimpleMessagesParallel(t, messagesCount, pub, topicName, 50)
