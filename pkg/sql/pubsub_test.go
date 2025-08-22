@@ -285,6 +285,24 @@ func createPostgreSQLQueue(t *testing.T, db sql.Beginner) (message.Publisher, me
 	return publisher, subscriber
 }
 
+func TestMySQLPublishSubscribe(t *testing.T) {
+	t.Parallel()
+
+	features := tests.Features{
+		ConsumerGroups:      true,
+		ExactlyOnceDelivery: true,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		createMySQLPubSub,
+		createMySQLPubSubWithConsumerGroup,
+	)
+}
+
 func TestPgxPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
