@@ -14,6 +14,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	driver "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -284,7 +285,6 @@ func createPostgreSQLQueue(t *testing.T, db sql.Beginner) (message.Publisher, me
 	return publisher, subscriber
 }
 
-/*
 func TestPgxPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
@@ -302,7 +302,6 @@ func TestPgxPublishSubscribe(t *testing.T) {
 		createPgxPubSubWithConsumerGroup,
 	)
 }
-*/
 
 /*
 func TestPgxPostgreSQLQueue(t *testing.T) {
