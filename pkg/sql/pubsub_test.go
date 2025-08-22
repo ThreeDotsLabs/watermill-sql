@@ -399,7 +399,6 @@ func TestPgxPostgreSQLQueue(t *testing.T) {
 	)
 }
 
-/*
 func TestCtxValues(t *testing.T) {
 	pubSubConstructors := []struct {
 		Name         string
@@ -461,8 +460,6 @@ func TestCtxValues(t *testing.T) {
 		})
 	}
 }
-
-*/
 
 // TestNotMissingMessages checks if messages are not missing when messages are published in concurrent transactions.
 // See more: https://github.com/ThreeDotsLabs/watermill/issues/311
@@ -735,8 +732,11 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 	}
 }
 
-/*
 func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("unstable in CI")
+	}
+
 	// this test should be not executed in Parallel to not disturb performance measurements
 
 	db := newPostgreSQL(t)
@@ -815,7 +815,6 @@ func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
 	// TBD if it will be stable in CI
 	assert.LessOrEqual(t, duration, time.Millisecond, "query duration is too long")
 }
-*/
 
 func findRowsRemovedByFilterInAnalyze(input string) []int {
 	pattern := `Rows Removed by Filter: (\d+)`
