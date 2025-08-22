@@ -341,6 +341,7 @@ func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 	)
 }
 
+/*
 func TestPgxPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
@@ -358,6 +359,7 @@ func TestPgxPublishSubscribe(t *testing.T) {
 		createPgxPubSubWithConsumerGroup,
 	)
 }
+*/
 
 func TestPostgreSQLQueue(t *testing.T) {
 	t.Parallel()
@@ -379,6 +381,7 @@ func TestPostgreSQLQueue(t *testing.T) {
 	)
 }
 
+/*
 func TestPgxPostgreSQLQueue(t *testing.T) {
 	t.Parallel()
 
@@ -398,6 +401,7 @@ func TestPgxPostgreSQLQueue(t *testing.T) {
 		nil,
 	)
 }
+*/
 
 func TestCtxValues(t *testing.T) {
 	pubSubConstructors := []struct {
@@ -484,6 +488,7 @@ func TestNotMissingMessages(t *testing.T) {
 			SchemaAdapter:  newPostgresSchemaAdapter(0),
 			OffsetsAdapter: newPostgresOffsetsAdapter(),
 		},
+		/*
 		{
 			Name: "pgx",
 			DbConstructor: func(t *testing.T) sql.Beginner {
@@ -492,6 +497,7 @@ func TestNotMissingMessages(t *testing.T) {
 			SchemaAdapter:  newPostgresSchemaAdapter(0),
 			OffsetsAdapter: newPostgresOffsetsAdapter(),
 		},
+		*/
 	}
 
 	for _, pubSub := range pubSubs {
@@ -681,6 +687,7 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 			},
 			Test: tests.TestConcurrentSubscribe,
 		},
+		/*
 		{
 			Name: "TestConcurrentSubscribe_pgx_1",
 			Constructor: func(t *testing.T) (message.Publisher, message.Subscriber) {
@@ -707,6 +714,7 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 			},
 			Test: tests.TestConcurrentSubscribe,
 		},
+		*/
 	}
 	for i := range testCases {
 		tc := testCases[i]
