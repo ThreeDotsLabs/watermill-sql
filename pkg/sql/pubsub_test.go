@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/lib/pq"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -397,7 +398,6 @@ func TestPgxPostgreSQLQueue(t *testing.T) {
 	)
 }
 
-/*
 func TestCtxValues(t *testing.T) {
 	pubSubConstructors := []struct {
 		Name         string
@@ -459,7 +459,6 @@ func TestCtxValues(t *testing.T) {
 		})
 	}
 }
-*/
 
 /*
 // TestNotMissingMessages checks if messages are not missing when messages are published in concurrent transactions.
