@@ -303,7 +303,6 @@ func TestPgxPublishSubscribe(t *testing.T) {
 	)
 }
 
-/*
 func TestPgxPostgreSQLQueue(t *testing.T) {
 	t.Parallel()
 
@@ -323,7 +322,6 @@ func TestPgxPostgreSQLQueue(t *testing.T) {
 		nil,
 	)
 }
-*/
 
 func findRowsRemovedByFilterInAnalyze(input string) []int {
 	pattern := `Rows Removed by Filter: (\d+)`
