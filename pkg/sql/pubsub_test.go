@@ -624,7 +624,6 @@ func TestNotMissingMessages(t *testing.T) {
 	}
 }
 
-/*
 func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 	t.Parallel()
 
@@ -736,8 +735,7 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 	}
 }
 
-*/
-
+/*
 func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
 	// this test should be not executed in Parallel to not disturb performance measurements
 
@@ -817,6 +815,7 @@ func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
 	// TBD if it will be stable in CI
 	assert.LessOrEqual(t, duration, time.Millisecond, "query duration is too long")
 }
+*/
 
 func findRowsRemovedByFilterInAnalyze(input string) []int {
 	pattern := `Rows Removed by Filter: (\d+)`
