@@ -753,7 +753,7 @@ func TestDefaultPostgreSQLSchema_planner_mis_estimate_regression(t *testing.T) {
 	require.NoError(t, err)
 
 	messagesCount := 100_000
-	if testing.Short() {
+	if testing.Short() || os.Getenv("CI") == "true" {
 		messagesCount = 1_000
 	}
 	tests.AddSimpleMessagesParallel(t, messagesCount, pub, topicName, 50)

@@ -2,16 +2,16 @@ up:
 	docker compose up -d
 
 test:
-	go test -timeout=30m ./...
+	go test -timeout=10m ./...
 
 test_v:
 	go test -v ./...
 
 test_short:
-	go test ./... -short
+	go test -short ./...
 
 test_race:
-	go test ./... -short -race
+	go test -short -race ./...
 
 test_stress:
 

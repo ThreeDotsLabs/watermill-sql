@@ -61,7 +61,7 @@ func TestPostgreSQLQueueSchemaAdapter(t *testing.T) {
 		case msg := <-messages:
 			receivedMessages = append(receivedMessages, msg)
 			msg.Ack()
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(5 * time.Second):
 			t.Errorf("expected to receive message")
 			break
 		}

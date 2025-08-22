@@ -180,7 +180,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(params SelectQueryParams) (Query, e
 			` + nextOffsetQuery.Query + `
 		)
 
-		SELECT "offset", transaction_id::text, uuid, payload, metadata FROM ` + s.MessagesTable(params.Topic) + `
+		SELECT "offset", transaction_id, uuid, payload, metadata FROM ` + s.MessagesTable(params.Topic) + `
 
 		WHERE 
 		(
@@ -269,23 +269,59 @@ func (x *XID8) Scan(src interface{}) error {
 		return errors.New("cannot scan nil value into XID8")
 	}
 
+	// We want to support scanning from various types (different drivers, like lib/pq, pgx, etc.)
 	switch v := src.(type) {
+	case int64:
+		if v < 0 {
+			return fmt.Errorf("cannot convert negative int64 %d to XID8", v)
+		}
+		*x = XID8(uint64(v))
+		return nil
+
+	case uint64:
+		*x = XID8(v)
+		return nil
+
+	case int32:
+		if v < 0 {
+			return fmt.Errorf("cannot convert negative int32 %d to XID8", v)
+		}
+		*x = XID8(uint64(v))
+		return nil
+
+	case uint32:
+		*x = XID8(v)
+		return nil
+
+	// pgx
 	case string:
+		if v == "" {
+			*x = 0
+			return nil
+		}
 		val, err := strconv.ParseUint(v, 10, 64)
 		if err != nil {
-			return err
+			return fmt.Errorf("cannot parse string %q as uint64: %w", v, err)
 		}
 		*x = XID8(val)
 		return nil
+
+	// lib/pq
 	case []byte:
+		if len(v) == 0 {
+			*x = 0
+			return nil
+		}
+
 		val, err := strconv.ParseUint(string(v), 10, 64)
 		if err != nil {
-			return err
+			return fmt.Errorf("cannot parse bytes %q as uint64: %w", string(v), err)
 		}
 		*x = XID8(val)
 		return nil
+
 	default:
-		return errors.New("unsupported Scan value type for XID8")
+		return fmt.Errorf("cannot scan %T into XID8", src)
 	}
 }
 
