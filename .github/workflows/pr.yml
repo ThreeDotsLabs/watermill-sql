@@ -3,6 +3,6 @@ on:
   pull_request:
 jobs:
   ci:
-    uses: ThreeDotsLabs/watermill/.github/workflows/tests.yml@assert-messages
+    uses: ThreeDotsLabs/watermill/.github/workflows/tests.yml@master
     with:
       runs-on: ubuntu-latest-16core
