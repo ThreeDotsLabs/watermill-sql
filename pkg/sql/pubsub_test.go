@@ -357,7 +357,6 @@ func TestPgxPublishSubscribe(t *testing.T) {
 	)
 }
 
-/*
 func TestPostgreSQLQueue(t *testing.T) {
 	t.Parallel()
 
@@ -377,7 +376,6 @@ func TestPostgreSQLQueue(t *testing.T) {
 		nil,
 	)
 }
-*/
 
 func TestPgxPostgreSQLQueue(t *testing.T) {
 	t.Parallel()
