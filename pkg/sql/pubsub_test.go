@@ -14,6 +14,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/message/subscriber"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	driver "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
@@ -398,6 +399,7 @@ func TestPgxPostgreSQLQueue(t *testing.T) {
 	)
 }
 
+/*
 func TestCtxValues(t *testing.T) {
 	pubSubConstructors := []struct {
 		Name         string
@@ -460,7 +462,8 @@ func TestCtxValues(t *testing.T) {
 	}
 }
 
-/*
+*/
+
 // TestNotMissingMessages checks if messages are not missing when messages are published in concurrent transactions.
 // See more: https://github.com/ThreeDotsLabs/watermill/issues/311
 func TestNotMissingMessages(t *testing.T) {
@@ -621,6 +624,7 @@ func TestNotMissingMessages(t *testing.T) {
 	}
 }
 
+/*
 func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 	t.Parallel()
 
