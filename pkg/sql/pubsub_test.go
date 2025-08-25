@@ -328,7 +328,7 @@ func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 
 	features := tests.Features{
 		ConsumerGroups:      true,
-		ExactlyOnceDelivery: false,
+		ExactlyOnceDelivery: true,
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}
@@ -346,7 +346,7 @@ func TestPgxPublishSubscribe(t *testing.T) {
 
 	features := tests.Features{
 		ConsumerGroups:      true,
-		ExactlyOnceDelivery: false,
+		ExactlyOnceDelivery: true,
 		GuaranteedOrder:     true,
 		Persistent:          true,
 	}
