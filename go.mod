@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.24.1
 
 require (
-	github.com/ThreeDotsLabs/watermill v1.4.0-rc.2
+	github.com/ThreeDotsLabs/watermill v1.5.0
 	github.com/go-sql-driver/mysql v1.4.1
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/lib/pq v1.10.9
@@ -15,11 +15,9 @@ require (
 )
 
 require (
-	github.com/cenkalti/backoff/v3 v3.2.2 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
