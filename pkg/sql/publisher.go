@@ -117,7 +117,13 @@ func (p *Publisher) Publish(topic string, messages ...*message.Message) (err err
 		"query_args": sqlArgsToLog(insertQuery.Args),
 	})
 
-	_, err = p.db.ExecContext(context.Background(), insertQuery.Query, insertQuery.Args...)
+	var ctx context.Context
+	if len(messages) > 0 {
+		ctx = messages[0].Context()
+	} else {
+		ctx = context.Background()
+	}
+	_, err = p.db.ExecContext(ctx, insertQuery.Query, insertQuery.Args...)
 	if err != nil {
 		return fmt.Errorf("could not insert message as row: %w", err)
 	}
