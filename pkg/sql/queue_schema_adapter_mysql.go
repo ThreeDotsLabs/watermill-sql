@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ThreeDotsLabs/watermill/components/delay"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
@@ -44,9 +43,7 @@ func (s MySQLQueueSchema) SchemaInitializingQueries(params SchemaInitializingQue
  			` + "`payload`" + ` ` + s.payloadColumnType(params.Topic) + ` DEFAULT NULL,
  			` + "`metadata`" + ` JSON DEFAULT NULL,
  			` + "`acked`" + ` BOOLEAN NOT NULL DEFAULT FALSE,
- 			` + "`created_at`" + ` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
- 			` + "`delayed_until`" + ` TIMESTAMP NULL DEFAULT NULL,
- 			INDEX ` + "`delayed_until_idx`" + ` (` + "`delayed_until`" + `)
+ 			` + "`created_at`" + ` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
  		);
 	`
 
@@ -55,12 +52,12 @@ func (s MySQLQueueSchema) SchemaInitializingQueries(params SchemaInitializingQue
 
 func (s MySQLQueueSchema) InsertQuery(params InsertQueryParams) (Query, error) {
 	insertQuery := fmt.Sprintf(
-		`INSERT INTO %s (uuid, payload, metadata, delayed_until) VALUES %s`,
+		`INSERT INTO %s (uuid, payload, metadata) VALUES %s`,
 		s.MessagesTable(params.Topic),
 		mysqlQueueInsertMarkers(len(params.Msgs)),
 	)
 
-	args, err := mysqlQueueInsertArgs(params.Msgs)
+	args, err := defaultInsertArgs(params.Msgs)
 	if err != nil {
 		return Query{}, err
 	}
@@ -72,37 +69,10 @@ func mysqlQueueInsertMarkers(count int) string {
 	result := strings.Builder{}
 
 	for range count {
-		result.WriteString("(?,?,?,?),")
+		result.WriteString("(?,?,?),")
 	}
 
 	return strings.TrimRight(result.String(), ",")
-}
-
-func mysqlQueueInsertArgs(msgs message.Messages) ([]any, error) {
-	var args []any
-
-	for _, msg := range msgs {
-		metadata, err := json.Marshal(msg.Metadata)
-		if err != nil {
-			return nil, fmt.Errorf("could not marshal metadata into JSON for message %s: %w", msg.UUID, err)
-		}
-
-		args = append(args, msg.UUID, msg.Payload, metadata)
-
-		// Extract delayed_until from metadata
-		delayedUntilStr := msg.Metadata.Get(delay.DelayedUntilKey)
-		if delayedUntilStr == "" {
-			args = append(args, nil)
-		} else {
-			// Convert ISO 8601 to MySQL TIMESTAMP format: "2025-10-22T09:58:00Z" -> "2025-10-22 09:58:00"
-			delayedUntilStr = strings.Replace(delayedUntilStr, "T", " ", 1)
-			delayedUntilStr = strings.TrimSuffix(delayedUntilStr, "Z")
-
-			args = append(args, delayedUntilStr)
-		}
-	}
-
-	return args, nil
 }
 
 func (s MySQLQueueSchema) batchSize() int {

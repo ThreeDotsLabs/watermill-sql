@@ -1,6 +1,10 @@
 package sql
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/components/delay"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -28,7 +32,9 @@ func NewDelayedMySQLPublisher(db ContextExecutor, config DelayedMySQLPublisherCo
 	config.setDefaults()
 
 	publisherConfig := PublisherConfig{
-		SchemaAdapter:        MySQLQueueSchema{},
+		SchemaAdapter: delayedMySQLSchemaAdapter{
+			MySQLQueueSchema: MySQLQueueSchema{},
+		},
 		AutoInitializeSchema: true,
 	}
 
@@ -120,4 +126,73 @@ func NewDelayedMySQLSubscriber(db Beginner, config DelayedMySQLSubscriberConfig)
 
 type delayedMySQLSchemaAdapter struct {
 	MySQLQueueSchema
+}
+
+func (a delayedMySQLSchemaAdapter) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
+	createMessagesTable := `
+		CREATE TABLE IF NOT EXISTS ` + a.MessagesTable(params.Topic) + ` (
+ 			` + "`offset`" + ` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ 			` + "`uuid`" + ` VARCHAR(36) NOT NULL,
+ 			` + "`payload`" + ` ` + a.payloadColumnType(params.Topic) + ` DEFAULT NULL,
+ 			` + "`metadata`" + ` JSON DEFAULT NULL,
+ 			` + "`acked`" + ` BOOLEAN NOT NULL DEFAULT FALSE,
+ 			` + "`created_at`" + ` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ 			` + "`delayed_until`" + ` TIMESTAMP NULL DEFAULT NULL,
+ 			INDEX ` + "`delayed_until_idx`" + ` (` + "`delayed_until`" + `)
+ 		);
+	`
+
+	return []Query{{Query: createMessagesTable}}, nil
+}
+
+func (a delayedMySQLSchemaAdapter) InsertQuery(params InsertQueryParams) (Query, error) {
+	insertQuery := fmt.Sprintf(
+		`INSERT INTO %s (uuid, payload, metadata, delayed_until) VALUES %s`,
+		a.MessagesTable(params.Topic),
+		delayedMySQLInsertMarkers(len(params.Msgs)),
+	)
+
+	args, err := delayedMySQLInsertArgs(params.Msgs)
+	if err != nil {
+		return Query{}, err
+	}
+
+	return Query{insertQuery, args}, nil
+}
+
+func delayedMySQLInsertMarkers(count int) string {
+	result := strings.Builder{}
+
+	for range count {
+		result.WriteString("(?,?,?,?),")
+	}
+
+	return strings.TrimRight(result.String(), ",")
+}
+
+func delayedMySQLInsertArgs(msgs message.Messages) ([]any, error) {
+	var args []any
+
+	for _, msg := range msgs {
+		metadata, err := json.Marshal(msg.Metadata)
+		if err != nil {
+			return nil, fmt.Errorf("could not marshal metadata into JSON for message %s: %w", msg.UUID, err)
+		}
+
+		args = append(args, msg.UUID, msg.Payload, metadata)
+
+		// Extract delayed_until from metadata
+		delayedUntilStr := msg.Metadata.Get(delay.DelayedUntilKey)
+		if delayedUntilStr == "" {
+			args = append(args, nil)
+		} else {
+			// Convert ISO 8601 to MySQL TIMESTAMP format: "2025-10-22T09:58:00Z" -> "2025-10-22 09:58:00"
+			delayedUntilStr = strings.Replace(delayedUntilStr, "T", " ", 1)
+			delayedUntilStr = strings.TrimSuffix(delayedUntilStr, "Z")
+
+			args = append(args, delayedUntilStr)
+		}
+	}
+
+	return args, nil
 }
