@@ -1,9 +1,6 @@
 package sql
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/components/delay"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -84,10 +81,10 @@ func (c *DelayedMySQLSubscriberConfig) setDefaults() {
 func NewDelayedMySQLSubscriber(db Beginner, config DelayedMySQLSubscriberConfig) (message.Subscriber, error) {
 	config.setDefaults()
 
-	where := fmt.Sprintf("STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.%s')), '%%Y-%%m-%%dT%%H:%%i:%%s.%%fZ') < UTC_TIMESTAMP()", delay.DelayedUntilKey)
+	where := "delayed_until <= NOW()"
 
 	if config.AllowNoDelay {
-		where += fmt.Sprintf(` OR JSON_EXTRACT(metadata, '$.%s') IS NULL`, delay.DelayedUntilKey)
+		where += " OR delayed_until IS NULL"
 	}
 
 	schemaAdapter := delayedMySQLSchemaAdapter{
@@ -123,20 +120,4 @@ func NewDelayedMySQLSubscriber(db Beginner, config DelayedMySQLSubscriberConfig)
 
 type delayedMySQLSchemaAdapter struct {
 	MySQLQueueSchema
-}
-
-func (a delayedMySQLSchemaAdapter) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
-	queries, err := a.MySQLQueueSchema.SchemaInitializingQueries(params)
-	if err != nil {
-		return nil, err
-	}
-
-	table := a.MessagesTable(params.Topic)
-	index := fmt.Sprintf("`%s_delayed_until_idx`", strings.ReplaceAll(strings.Trim(table, "`"), "`", ""))
-
-	queries = append(queries, Query{
-		Query: fmt.Sprintf(`CREATE INDEX %s ON %s ((JSON_EXTRACT(metadata, '$.%s')))`, index, table, delay.DelayedUntilKey),
-	})
-
-	return queries, nil
 }
