@@ -136,3 +136,50 @@ func NewPostgreSQLDelayedRequeuer(config DelayedRequeuerConfig) (*DelayedRequeue
 		requeuer: requeuer,
 	}, nil
 }
+
+// NewMySQLDelayedRequeuer creates a new DelayedRequeuer that uses MySQL as a storage.
+func NewMySQLDelayedRequeuer(config DelayedRequeuerConfig) (*DelayedRequeuer, error) {
+	config.setDefaults()
+	err := config.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	publisher, err := NewDelayedMySQLPublisher(config.DB, DelayedMySQLPublisherConfig{
+		Logger: config.Logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	subscriber, err := NewDelayedMySQLSubscriber(config.DB, DelayedMySQLSubscriberConfig{
+		DeleteOnAck: true,
+		Logger:      config.Logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	poisonQueue, err := middleware.PoisonQueue(publisher, config.RequeueTopic)
+	if err != nil {
+		return nil, err
+	}
+
+	requeuer, err := requeuer.NewRequeuer(requeuer.Config{
+		Subscriber:           subscriber,
+		SubscribeTopic:       config.RequeueTopic,
+		Publisher:            config.Publisher,
+		GeneratePublishTopic: config.GeneratePublishTopic,
+	}, config.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DelayedRequeuer{
+		middleware: []message.HandlerMiddleware{
+			poisonQueue,
+			config.DelayOnError.Middleware,
+		},
+		requeuer: requeuer,
+	}, nil
+}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/components/delay"
@@ -87,7 +88,7 @@ func (c *DelayedMySQLSubscriberConfig) setDefaults() {
 func NewDelayedMySQLSubscriber(db Beginner, config DelayedMySQLSubscriberConfig) (message.Subscriber, error) {
 	config.setDefaults()
 
-	where := "delayed_until <= NOW()"
+	where := "delayed_until <= UTC_TIMESTAMP()"
 
 	if config.AllowNoDelay {
 		where += " OR delayed_until IS NULL"
@@ -138,7 +139,7 @@ func (a delayedMySQLSchemaAdapter) SchemaInitializingQueries(params SchemaInitia
  			` + "`acked`" + ` BOOLEAN NOT NULL DEFAULT FALSE,
  			` + "`created_at`" + ` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
  			` + "`delayed_until`" + ` TIMESTAMP NULL DEFAULT NULL,
- 			INDEX ` + "`delayed_until_idx`" + ` (` + "`delayed_until`" + `)
+ 			INDEX ` + "`idx_acked_delayed`" + ` (` + "`acked`" + `, ` + "`delayed_until`" + `)
  		);
 	`
 
@@ -186,11 +187,11 @@ func delayedMySQLInsertArgs(msgs message.Messages) ([]any, error) {
 		if delayedUntilStr == "" {
 			args = append(args, nil)
 		} else {
-			// Convert ISO 8601 to MySQL TIMESTAMP format: "2025-10-22T09:58:00Z" -> "2025-10-22 09:58:00"
-			delayedUntilStr = strings.Replace(delayedUntilStr, "T", " ", 1)
-			delayedUntilStr = strings.TrimSuffix(delayedUntilStr, "Z")
-
-			args = append(args, delayedUntilStr)
+			delayedUntil, err := time.Parse(time.RFC3339, delayedUntilStr)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse delayed_until timestamp %s: %w", delayedUntilStr, err)
+			}
+			args = append(args, delayedUntil)
 		}
 	}
 
