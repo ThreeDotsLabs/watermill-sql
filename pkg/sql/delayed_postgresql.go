@@ -84,7 +84,7 @@ func (c *DelayedPostgreSQLSubscriberConfig) setDefaults() {
 func NewDelayedPostgreSQLSubscriber(db Beginner, config DelayedPostgreSQLSubscriberConfig) (message.Subscriber, error) {
 	config.setDefaults()
 
-	where := fmt.Sprintf("(metadata->>'%v')::timestamptz < NOW() AT TIME ZONE 'UTC'", delay.DelayedUntilKey)
+	where := fmt.Sprintf("(metadata->>'%v')::timestamptz < NOW()", delay.DelayedUntilKey)
 
 	if config.AllowNoDelay {
 		where += fmt.Sprintf(` OR (metadata->>'%s') IS NULL`, delay.DelayedUntilKey)
