@@ -98,7 +98,7 @@ func (s MySQLQueueSchema) SelectQuery(params SelectQueryParams) (Query, error) {
 	if s.GenerateWhereClause != nil {
 		where, args = s.GenerateWhereClause(whereParams)
 		if where != "" {
-			where = "AND " + where
+			where = "AND (" + where + ")"
 		}
 	}
 
