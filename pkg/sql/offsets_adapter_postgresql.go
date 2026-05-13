@@ -76,7 +76,7 @@ func (a DefaultPostgreSQLOffsetsAdapter) BeforeSubscribingQueries(params BeforeS
 			// It's required for exactly-once-delivery guarantee.
 			// It adds "zero offsets" to the table with offsets.
 			//
-			// Without that, `FOR UDATE` from `NextOffsetQuery` won't work,
+			// Without that, `FOR UPDATE` from `NextOffsetQuery` won't work,
 			// because there is nothing to lock.
 			//
 			// If "zero offsets" won't be present and multiple concurrent subscribers will try to consume them it
