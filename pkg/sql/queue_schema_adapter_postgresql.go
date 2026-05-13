@@ -104,7 +104,7 @@ func (s PostgreSQLQueueSchema) SelectQuery(params SelectQueryParams) (Query, err
 	if s.GenerateWhereClause != nil {
 		where, args = s.GenerateWhereClause(whereParams)
 		if where != "" {
-			where = "AND " + where
+			where = "AND (" + where + ")"
 		}
 	}
 
