@@ -66,25 +66,25 @@ func (c PgxBeginner) BeginTx(ctx context.Context, options *stdSQL.TxOptions) (Tx
 }
 
 func (c PgxBeginner) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
-	res, err := c.Conn.Exec(ctx, query, args...)
+	res, err := c.Exec(ctx, query, args...)
 
 	return PgxResult{res}, err
 }
 
 func (c PgxBeginner) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
-	rows, err := c.Conn.Query(ctx, query, args...)
+	rows, err := c.Query(ctx, query, args...)
 
 	return PgxRows{rows}, err
 }
 
 func (t PgxTx) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
-	res, err := t.Tx.Exec(ctx, query, args...)
+	res, err := t.Exec(ctx, query, args...)
 
 	return PgxResult{res}, err
 }
 
 func (t PgxTx) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
-	rows, err := t.Tx.Query(ctx, query, args...)
+	rows, err := t.Query(ctx, query, args...)
 
 	return PgxRows{rows}, err
 }

@@ -74,7 +74,7 @@ func queueInsertMarkers(count int) string {
 
 	index := 1
 	for i := 0; i < count; i++ {
-		result.WriteString(fmt.Sprintf("($%d,$%d,$%d),", index, index+1, index+2))
+		fmt.Fprintf(&result, "($%d,$%d,$%d),", index, index+1, index+2)
 		index += 3
 	}
 
@@ -104,7 +104,7 @@ func (s PostgreSQLQueueSchema) SelectQuery(params SelectQueryParams) (Query, err
 	if s.GenerateWhereClause != nil {
 		where, args = s.GenerateWhereClause(whereParams)
 		if where != "" {
-			where = "AND " + where
+			where = "AND (" + where + ")"
 		}
 	}
 
