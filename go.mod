@@ -1,21 +1,20 @@
 module github.com/ThreeDotsLabs/watermill-sql/v4
 
-go 1.23.0
-
-toolchain go1.24.1
+go 1.25.0
 
 require (
-	github.com/ThreeDotsLabs/watermill v1.5.0
-	github.com/go-sql-driver/mysql v1.4.1
-	github.com/jackc/pgx/v5 v5.7.5
-	github.com/lib/pq v1.10.9
+	github.com/ThreeDotsLabs/watermill v1.5.1
+	github.com/go-sql-driver/mysql v1.10.0
+	github.com/jackc/pgx/v5 v5.9.2
+	github.com/lib/pq v1.12.3
 	github.com/oklog/ulid v1.3.1
 	github.com/pkg/errors v0.9.1
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
+	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -25,9 +24,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/sony/gobreaker v1.0.0 // indirect
-	golang.org/x/crypto v0.37.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
-	google.golang.org/appengine v1.6.7 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
