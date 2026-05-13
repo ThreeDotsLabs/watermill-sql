@@ -95,7 +95,7 @@ func defaultInsertMarkers(count int) string {
 
 	index := 1
 	for i := 0; i < count; i++ {
-		result.WriteString(fmt.Sprintf("($%d,$%d,$%d,pg_current_xact_id()),", index, index+1, index+2))
+		fmt.Fprintf(&result, "($%d,$%d,$%d,pg_current_xact_id()),", index, index+1, index+2)
 		index += 3
 	}
 

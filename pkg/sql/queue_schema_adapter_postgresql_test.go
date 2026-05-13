@@ -56,6 +56,7 @@ func TestPostgreSQLQueueSchemaAdapter(t *testing.T) {
 	}
 
 	var receivedMessages []*message.Message
+ReceiveLoop:
 	for i := 0; i < 5; i++ {
 		select {
 		case msg := <-messages:
@@ -63,7 +64,7 @@ func TestPostgreSQLQueueSchemaAdapter(t *testing.T) {
 			msg.Ack()
 		case <-time.After(5 * time.Second):
 			t.Errorf("expected to receive message")
-			break
+			break ReceiveLoop
 		}
 	}
 
