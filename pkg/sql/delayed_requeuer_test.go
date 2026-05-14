@@ -40,7 +40,7 @@ func TestPostgreSQLDelayedRequeuer(t *testing.T) {
 
 	var receivedMessages []string
 
-	router.AddNoPublisherHandler(
+	router.AddConsumerHandler(
 		"test",
 		topic,
 		subscriber,
@@ -108,7 +108,7 @@ func TestMySQLDelayedRequeuer(t *testing.T) {
 
 	var receivedMessages []string
 
-	router.AddNoPublisherHandler(
+	router.AddConsumerHandler(
 		"test",
 		topic,
 		subscriber,
