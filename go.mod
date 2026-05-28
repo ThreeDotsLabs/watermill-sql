@@ -3,7 +3,7 @@ module github.com/ThreeDotsLabs/watermill-sql/v4
 go 1.25.0
 
 require (
-	github.com/ThreeDotsLabs/watermill v1.5.1
+	github.com/ThreeDotsLabs/watermill v1.5.2
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/lib/pq v1.12.3
