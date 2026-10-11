@@ -29,6 +29,10 @@ func (a PostgreSQLQueueOffsetsAdapter) AckMessageQuery(params AckMessageQueryPar
 		panic("consumer groups are not supported in PostgreSQLQueueOffsetsAdapter")
 	}
 
+	if len(params.Rows) == 0 {
+		return Query{}, nil
+	}
+
 	var ackQuery string
 
 	table := a.MessagesTable(params.Topic)
