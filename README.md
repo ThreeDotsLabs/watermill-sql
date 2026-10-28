@@ -2,7 +2,6 @@
 <img align="right" width="200" src="https://watermill.io/img/gopher.svg">
 
 [![CI Status](https://github.com/ThreeDotsLabs/watermill-sql/actions/workflows/master.yml/badge.svg)](https://github.com/ThreeDotsLabs/watermill-sql/actions/workflows/master.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ThreeDotsLabs/watermill-sql)](https://goreportcard.com/report/github.com/ThreeDotsLabs/watermill-sql)
 
 This is Pub/Sub for the [Watermill](https://watermill.io/) project.
 
