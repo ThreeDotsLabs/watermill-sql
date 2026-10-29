@@ -40,7 +40,7 @@ type PostgreSQLQueueSchema struct {
 }
 
 func (s PostgreSQLQueueSchema) SchemaInitializingQueries(params SchemaInitializingQueriesParams) ([]Query, error) {
-	createMessagesTable := ` 
+	createMessagesTable := `
 		CREATE TABLE IF NOT EXISTS ` + s.MessagesTable(params.Topic) + ` (
 			"offset" SERIAL PRIMARY KEY,
 			"uuid" VARCHAR(36) NOT NULL,
@@ -51,7 +51,16 @@ func (s PostgreSQLQueueSchema) SchemaInitializingQueries(params SchemaInitializi
 		);
 	`
 
-	return []Query{{Query: createMessagesTable}}, nil
+	createAckedIndex := `
+		CREATE INDEX IF NOT EXISTS "` + strings.Trim(s.MessagesTable(params.Topic), `"`) + `_acked_idx"
+		ON ` + s.MessagesTable(params.Topic) + ` ("offset")
+		WHERE acked = false;
+	`
+
+	return []Query{
+		{Query: createMessagesTable},
+		{Query: createAckedIndex},
+	}, nil
 }
 
 func (s PostgreSQLQueueSchema) InsertQuery(params InsertQueryParams) (Query, error) {

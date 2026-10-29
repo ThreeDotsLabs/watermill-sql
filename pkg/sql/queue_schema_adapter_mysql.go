@@ -47,7 +47,15 @@ func (s MySQLQueueSchema) SchemaInitializingQueries(params SchemaInitializingQue
  		);
 	`
 
-	return []Query{{Query: createMessagesTable}}, nil
+	createAckedIndex := `
+		CREATE INDEX ` + "`" + strings.Trim(s.MessagesTable(params.Topic), "`") + `_acked_offset_idx` + "`" + `
+		ON ` + s.MessagesTable(params.Topic) + ` (` + "`acked`" + `, ` + "`offset`" + `);
+	`
+
+	return []Query{
+		{Query: createMessagesTable},
+		{Query: createAckedIndex},
+	}, nil
 }
 
 func (s MySQLQueueSchema) InsertQuery(params InsertQueryParams) (Query, error) {
