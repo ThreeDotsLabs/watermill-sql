@@ -18,6 +18,7 @@ import (
 
 var (
 	ErrSubscriberClosed = errors.New("subscriber is closed")
+	errMessageNacked    = errors.New("message nacked")
 )
 
 type SubscriberConfig struct {
@@ -246,6 +247,11 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 		}
 
 		noMsg, err := s.query(ctx, topic, out, logger)
+		if errors.Is(err, errMessageNacked) {
+			sleepTime = s.config.ResendInterval
+			continue
+		}
+
 		backoff := s.config.BackoffManager.HandleError(logger, noMsg, err)
 		if backoff != 0 {
 			logFields := watermill.LogFields{
@@ -430,60 +436,48 @@ func (s *Subscriber) processMessage(
 
 	msgCtx := setTxToContext(ctx, tx)
 
-	return s.sendMessage(msgCtx, row.Msg, out, logger), nil
+	return s.sendMessage(msgCtx, row.Msg, out, logger)
 }
 
-// sendMessages sends messages on the output channel.
+// sendMessage sends a message on the output channel.
 func (s *Subscriber) sendMessage(
 	ctx context.Context,
 	msg *message.Message,
 	out chan *message.Message,
 	logger watermill.LoggerAdapter,
-) (acked bool) {
+) (acked bool, err error) {
 	msgCtx, cancel := context.WithCancel(ctx)
 	msg.SetContext(msgCtx)
 	defer cancel()
 
-ResendLoop:
-	for {
+	select {
+	case out <- msg:
 
-		select {
-		case out <- msg:
+	case <-s.closing:
+		logger.Info("Discarding queued message, subscriber closing", nil)
+		return false, nil
 
-		case <-s.closing:
-			logger.Info("Discarding queued message, subscriber closing", nil)
-			return false
+	case <-ctx.Done():
+		logger.Info("Discarding queued message, context canceled", nil)
+		return false, nil
+	}
 
-		case <-ctx.Done():
-			logger.Info("Discarding queued message, context canceled", nil)
-			return false
-		}
+	select {
+	case <-msg.Acked():
+		logger.Debug("Message acked by subscriber", nil)
+		return true, nil
 
-		select {
-		case <-msg.Acked():
-			logger.Debug("Message acked by subscriber", nil)
-			return true
+	case <-msg.Nacked():
+		logger.Debug("Message nacked, rolling back transaction", nil)
+		return false, errMessageNacked
 
-		case <-msg.Nacked():
-			//message nacked, try resending
-			logger.Debug("Message nacked, resending", nil)
-			msg = msg.Copy()
-			msg.SetContext(msgCtx)
+	case <-s.closing:
+		logger.Info("Discarding queued message, subscriber closing", nil)
+		return false, nil
 
-			if s.config.ResendInterval != 0 {
-				time.Sleep(s.config.ResendInterval)
-			}
-
-			continue ResendLoop
-
-		case <-s.closing:
-			logger.Info("Discarding queued message, subscriber closing", nil)
-			return false
-
-		case <-ctx.Done():
-			logger.Info("Discarding queued message, context canceled", nil)
-			return false
-		}
+	case <-ctx.Done():
+		logger.Info("Discarding queued message, context canceled", nil)
+		return false, nil
 	}
 }
 
