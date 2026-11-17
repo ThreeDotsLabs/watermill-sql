@@ -93,7 +93,7 @@ func (c SubscriberConfig) validate() error {
 		return errors.New("resend interval must be a positive duration")
 	}
 	if c.RetryInterval <= 0 {
-		return errors.New("resend interval must be a positive duration")
+		return errors.New("retry interval must be a positive duration")
 	}
 	if c.SchemaAdapter == nil {
 		return errors.New("schema adapter is nil")
@@ -314,7 +314,7 @@ func (s *Subscriber) query(
 
 	defer func() {
 		if rowsCloseErr := rows.Close(); rowsCloseErr != nil {
-			err = errors.Join(err, fmt.Errorf("could not close rows: %w", err))
+			err = errors.Join(err, fmt.Errorf("could not close rows: %w", rowsCloseErr))
 		}
 	}()
 
@@ -334,6 +334,14 @@ func (s *Subscriber) query(
 		}
 
 		messageRows = append(messageRows, row)
+	}
+
+	// Next also returns false when the query failed during execution (for example, on a serialization failure
+	// between concurrent subscribers). The transaction is aborted then, so the rows read so far can't be acked.
+	if errRows, ok := rows.(rowsWithErr); ok {
+		if rowsErr := errRows.Err(); rowsErr != nil {
+			return false, fmt.Errorf("could not read queried messages: %w", rowsErr)
+		}
 	}
 
 	for _, row := range messageRows {
@@ -372,7 +380,7 @@ func (s *Subscriber) query(
 
 	result, err := tx.ExecContext(ctx, ackQuery.Query, ackQuery.Args...)
 	if err != nil {
-		return false, fmt.Errorf("could not get args for acking the message: %w", err)
+		return false, fmt.Errorf("could not execute ack message query: %w", err)
 	}
 
 	rowsAffected, _ := result.RowsAffected()
@@ -411,7 +419,7 @@ func (s *Subscriber) processMessage(
 	}
 	if !consumedQuery.IsZero() {
 		logger.Trace("Executing query to confirm message consumed", watermill.LogFields{
-			"query":      consumedQuery.Args,
+			"query":      consumedQuery.Query,
 			"query_args": sqlArgsToLog(consumedQuery.Args),
 		})
 

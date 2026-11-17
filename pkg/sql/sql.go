@@ -21,6 +21,17 @@ type Rows interface {
 	Next() bool
 }
 
+// Err is not added to Rows itself, so Rows implemented outside this package keep compiling.
+type rowsWithErr interface {
+	Err() error
+}
+
+// Rows returned by the adapters in this package must report iteration errors.
+var (
+	_ rowsWithErr = (*sql.Rows)(nil)
+	_ rowsWithErr = PgxRows{}
+)
+
 type Tx interface {
 	ContextExecutor
 	Rollback() error
