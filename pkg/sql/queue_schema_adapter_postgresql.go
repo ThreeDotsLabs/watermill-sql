@@ -2,7 +2,6 @@ package sql
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -129,11 +128,9 @@ func (s PostgreSQLQueueSchema) UnmarshalMessage(params UnmarshalMessageParams) (
 
 	msg := message.NewMessage(string(r.UUID), r.Payload)
 
-	if r.Metadata != nil {
-		err = json.Unmarshal(r.Metadata, &msg.Metadata)
-		if err != nil {
-			return Row{}, fmt.Errorf("could not unmarshal metadata as JSON: %w", err)
-		}
+	err = unmarshalMessageMetadata(r.Metadata, msg)
+	if err != nil {
+		return Row{}, err
 	}
 
 	r.Msg = msg

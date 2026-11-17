@@ -63,6 +63,23 @@ type Row struct {
 	ExtraData map[string]any
 }
 
+// A message published with nil Metadata is stored as JSON null, and unmarshalling null sets msg.Metadata to nil.
+// The first Metadata.Set call in a consumer or a middleware would then panic.
+func unmarshalMessageMetadata(metadata []byte, msg *message.Message) error {
+	if metadata != nil {
+		err := json.Unmarshal(metadata, &msg.Metadata)
+		if err != nil {
+			return fmt.Errorf("could not unmarshal metadata as JSON: %w", err)
+		}
+	}
+
+	if msg.Metadata == nil {
+		msg.Metadata = message.Metadata{}
+	}
+
+	return nil
+}
+
 func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
 	var args []interface{}
 	for _, msg := range msgs {

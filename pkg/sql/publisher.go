@@ -44,8 +44,10 @@ type Publisher struct {
 	db ContextExecutor
 
 	publishWg *sync.WaitGroup
-	closeCh   chan struct{}
-	closed    bool
+	// Without closedLock, Publish could pass the closed check and call publishWg.Add while Close is already in
+	// publishWg.Wait: a data race, and a Publish reaching the database after Close returned.
+	closedLock sync.RWMutex
+	closed     bool
 
 	initializedTopics sync.Map
 	logger            watermill.LoggerAdapter
@@ -76,7 +78,6 @@ func NewPublisher(db ContextExecutor, config PublisherConfig, logger watermill.L
 		db:     db,
 
 		publishWg: new(sync.WaitGroup),
-		closeCh:   make(chan struct{}),
 		closed:    false,
 
 		logger: logger,
@@ -88,16 +89,25 @@ func NewPublisher(db ContextExecutor, config PublisherConfig, logger watermill.L
 // Publish is blocking until all rows have been added to the Publisher's transaction.
 // Publisher doesn't guarantee publishing messages in a single transaction,
 // but the constructor accepts both *sql.DB and *sql.Tx, so transactions may be handled upstream by the user.
+// Publish without messages does nothing and returns nil.
 func (p *Publisher) Publish(topic string, messages ...*message.Message) (err error) {
+	p.closedLock.RLock()
 	if p.closed {
+		p.closedLock.RUnlock()
 		return ErrPublisherClosed
 	}
-
 	p.publishWg.Add(1)
+	p.closedLock.RUnlock()
+
 	defer p.publishWg.Done()
 
 	if err := validateTopicName(topic); err != nil {
 		return err
+	}
+
+	if len(messages) == 0 {
+		// An INSERT without any values is not valid SQL.
+		return nil
 	}
 
 	if err := p.initializeSchema(topic); err != nil {
@@ -117,13 +127,7 @@ func (p *Publisher) Publish(topic string, messages ...*message.Message) (err err
 		"query_args": sqlArgsToLog(insertQuery.Args),
 	})
 
-	var ctx context.Context
-	if len(messages) > 0 {
-		ctx = messages[0].Context()
-	} else {
-		ctx = context.Background()
-	}
-	_, err = p.db.ExecContext(ctx, insertQuery.Query, insertQuery.Args...)
+	_, err = p.db.ExecContext(messages[0].Context(), insertQuery.Query, insertQuery.Args...)
 	if err != nil {
 		return fmt.Errorf("could not insert message as row: %w", err)
 	}
@@ -161,14 +165,13 @@ func (p *Publisher) initializeSchema(topic string) error {
 // Close closes the publisher, which means that all the Publish calls called before are finished
 // and no more Publish calls are accepted.
 // Close is blocking until all the ongoing Publish calls have returned.
+// Close can be called multiple times, also concurrently.
 func (p *Publisher) Close() error {
-	if p.closed {
-		return nil
-	}
-
+	p.closedLock.Lock()
 	p.closed = true
+	p.closedLock.Unlock()
 
-	close(p.closeCh)
+	// No Publish call can register in publishWg anymore, so it's safe to wait without holding the lock.
 	p.publishWg.Wait()
 
 	return nil
