@@ -30,7 +30,8 @@ type PgxTx struct {
 
 func TxFromPgx(tx pgx.Tx) Tx {
 	return PgxTx{
-		Tx: tx,
+		Tx:  tx,
+		ctx: context.Background(),
 	}
 }
 
@@ -90,11 +91,20 @@ func (t PgxTx) QueryContext(ctx context.Context, query string, args ...any) (Row
 }
 
 func (t PgxTx) Rollback() error {
-	return t.Tx.Rollback(context.WithoutCancel(t.ctx))
+	return t.Tx.Rollback(context.WithoutCancel(t.finishCtx()))
 }
 
 func (t PgxTx) Commit() error {
-	return t.Tx.Commit(t.ctx)
+	return t.Tx.Commit(t.finishCtx())
+}
+
+// PgxTx is exported, so it can be built as a struct literal without a context, and pgx panics on a nil context.
+func (t PgxTx) finishCtx() context.Context {
+	if t.ctx == nil {
+		return context.Background()
+	}
+
+	return t.ctx
 }
 
 func (p PgxResult) RowsAffected() (int64, error) {

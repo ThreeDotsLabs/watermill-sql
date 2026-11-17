@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"math"
 	"strconv"
 	"strings"
 
@@ -325,6 +326,12 @@ func (x *XID8) Scan(src interface{}) error {
 	}
 }
 
+// Value implements driver.Valuer. uint64 is not a valid driver.Value, so it returns an int64,
+// or the decimal string for values greater than math.MaxInt64, which PostgreSQL parses as xid8.
 func (x *XID8) Value() (driver.Value, error) {
-	return uint64(*x), nil
+	if uint64(*x) > math.MaxInt64 {
+		return strconv.FormatUint(uint64(*x), 10), nil
+	}
+
+	return int64(*x), nil
 }
