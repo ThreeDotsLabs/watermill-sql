@@ -43,6 +43,17 @@ type DefaultMySQLSchema struct {
 	// By default, it's JSON. If your payload is not JSON, you can use BYTEA.
 	GeneratePayloadType func(topic string) string
 
+	// BindJSONAsText makes the publisher bind the metadata, and the payload when the payload column type is JSON,
+	// as text instead of []byte.
+	//
+	// Enable it when the driver interpolates the parameters into the query on the client (interpolateParams=true).
+	// Such a driver sends []byte as a binary string, which a JSON column rejects with
+	// "Error 3144: Cannot create a JSON value from a string with CHARACTER SET 'binary'".
+	//
+	// When enabled, the payload column type from GeneratePayloadType (JSON when not set) must match the real column,
+	// also if the table is not created by this adapter, and the metadata column must be JSON.
+	BindJSONAsText bool
+
 	// SubscribeBatchSize is the number of messages to be queried at once.
 	//
 	// Higher value, increases a chance of message re-delivery in case of crash or networking issues.
@@ -73,7 +84,7 @@ func (s DefaultMySQLSchema) InsertQuery(params InsertQueryParams) (Query, error)
 		strings.TrimRight(strings.Repeat(`(?,?,?),`, len(params.Msgs)), ","),
 	)
 
-	args, err := defaultInsertArgs(params.Msgs)
+	args, err := defaultInsertArgs(params.Msgs, newJSONTextArgs(s.BindJSONAsText, s.PayloadColumnType, params.Topic))
 	if err != nil {
 		return Query{}, err
 	}

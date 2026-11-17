@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -63,7 +64,7 @@ type Row struct {
 	ExtraData map[string]any
 }
 
-func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
+func defaultInsertArgs(msgs message.Messages, textArgs jsonTextArgs) ([]interface{}, error) {
 	var args []interface{}
 	for _, msg := range msgs {
 		metadata, err := json.Marshal(msg.Metadata)
@@ -71,8 +72,45 @@ func defaultInsertArgs(msgs message.Messages) ([]interface{}, error) {
 			return nil, fmt.Errorf("could not marshal metadata into JSON for message %s: %w", msg.UUID, err)
 		}
 
-		args = append(args, msg.UUID, []byte(msg.Payload), metadata)
+		args = append(args, msg.UUID, textArgs.payload(msg.Payload), textArgs.metadata(metadata))
 	}
 
 	return args, nil
+}
+
+type jsonTextArgs struct {
+	metadataAsText bool
+	payloadAsText  bool
+}
+
+// payloadColumnType is a func so that GeneratePayloadType isn't called on every publish when the option is off.
+func newJSONTextArgs(bindJSONAsText bool, payloadColumnType func(topic string) string, topic string) jsonTextArgs {
+	if !bindJSONAsText {
+		return jsonTextArgs{}
+	}
+
+	// A text payload bound to a binary column would be corrupted (see BindJSONAsText), so only JSON columns get it.
+	switch strings.ToUpper(strings.TrimSpace(payloadColumnType(topic))) {
+	case "JSON", "JSONB":
+		return jsonTextArgs{metadataAsText: true, payloadAsText: true}
+	default:
+		return jsonTextArgs{metadataAsText: true}
+	}
+}
+
+func (a jsonTextArgs) metadata(metadata []byte) any {
+	if a.metadataAsText {
+		return string(metadata)
+	}
+
+	return metadata
+}
+
+func (a jsonTextArgs) payload(payload message.Payload) any {
+	// A nil payload must stay a nil []byte to be stored as NULL, not as an empty string.
+	if a.payloadAsText && payload != nil {
+		return string(payload)
+	}
+
+	return []byte(payload)
 }

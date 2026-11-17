@@ -27,6 +27,20 @@ type PostgreSQLQueueSchema struct {
 	// By default, it's JSON. If your payload is not JSON, you can use BYTEA.
 	GeneratePayloadType func(topic string) string
 
+	// BindJSONAsText makes the publisher bind the metadata, and the payload when the payload column type is JSON or JSONB,
+	// as text instead of []byte.
+	//
+	// Enable it when the driver doesn't learn the parameter types from the server: pgx with default_query_exec_mode
+	// set to exec or simple_protocol (for example, behind PgBouncer in transaction pooling mode).
+	// Such a driver sends []byte as bytea, which a JSON column rejects with
+	// "invalid input syntax for type json (SQLSTATE 22P02)".
+	//
+	// When enabled, the payload column type from GeneratePayloadType (JSON when not set) must match the real column,
+	// also if the table is not created by this adapter, and the metadata column must be JSON or JSONB.
+	// Text bound to a BYTEA column is parsed by PostgreSQL as bytea input, which changes backslash sequences
+	// (`\101` is stored as `A`) and rejects NUL bytes.
+	BindJSONAsText bool
+
 	// GenerateMessagesTableName may be used to override how the messages table name is generated.
 	GenerateMessagesTableName func(topic string) string
 
@@ -61,7 +75,7 @@ func (s PostgreSQLQueueSchema) InsertQuery(params InsertQueryParams) (Query, err
 		queueInsertMarkers(len(params.Msgs)),
 	)
 
-	args, err := defaultInsertArgs(params.Msgs)
+	args, err := defaultInsertArgs(params.Msgs, newJSONTextArgs(s.BindJSONAsText, s.payloadColumnType, params.Topic))
 	if err != nil {
 		return Query{}, err
 	}
