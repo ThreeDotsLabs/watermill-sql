@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -116,7 +115,11 @@ type Subscriber struct {
 
 	subscribeWg *sync.WaitGroup
 	closing     chan struct{}
-	closed      uint32
+
+	// Guards closed. Without it, Subscribe could call subscribeWg.Add concurrently with Close() waiting,
+	// which sync.WaitGroup forbids, and start a subscription that outlives Close().
+	subscribeLock sync.Mutex
+	closed        bool
 
 	logger watermill.LoggerAdapter
 }
@@ -168,7 +171,7 @@ func newSubscriberID() ([]byte, string, error) {
 }
 
 func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *message.Message, err error) {
-	if atomic.LoadUint32(&s.closed) == 1 {
+	if s.isClosed() {
 		return nil, ErrSubscriberClosed
 	}
 
@@ -209,12 +212,19 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 		}
 	}
 
+	// Close() may have been called meanwhile, and it waits only for the subscriptions added before.
+	if !s.addToSubscribeWgUnlessClosed() {
+		return nil, ErrSubscriberClosed
+	}
+
 	// the information about closing the subscriber is propagated through ctx
 	ctx, cancel := context.WithCancel(ctx)
 	out := make(chan *message.Message)
 
-	s.subscribeWg.Add(1)
 	go func() {
+		// Done is called last, so that the output channel is already closed when Close() returns.
+		defer s.subscribeWg.Done()
+
 		s.consume(ctx, topic, out)
 		close(out)
 		cancel()
@@ -224,8 +234,6 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 }
 
 func (s *Subscriber) consume(ctx context.Context, topic string, out chan *message.Message) {
-	defer s.subscribeWg.Done()
-
 	logger := s.logger.With(watermill.LogFields{
 		"topic":          topic,
 		"consumer_group": s.config.ConsumerGroup,
@@ -246,6 +254,15 @@ func (s *Subscriber) consume(ctx context.Context, topic string, out chan *messag
 		}
 
 		noMsg, err := s.query(ctx, topic, out, logger)
+		if err != nil && s.closingOrCanceled(ctx) {
+			// Closing or canceling ctx interrupts the query, so this error is expected: the BackoffManager
+			// would log it as an error on every shutdown.
+			logger.Info("Stopping consume, subscriber closing or context canceled", watermill.LogFields{
+				"err": err.Error(),
+			})
+			return
+		}
+
 		backoff := s.config.BackoffManager.HandleError(logger, noMsg, err)
 		if backoff != 0 {
 			logFields := watermill.LogFields{
@@ -279,9 +296,17 @@ func (s *Subscriber) query(
 		if err != nil {
 			rollbackErr := tx.Rollback()
 			if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-				logger.Error("could not rollback tx for querying message", rollbackErr, watermill.LogFields{
-					"query_err": err,
-				})
+				if s.closingOrCanceled(ctx) {
+					// The drivers close the connection to interrupt the SELECT, which also rolls back the transaction.
+					logger.Debug("could not rollback tx for querying message, subscriber closing or context canceled", watermill.LogFields{
+						"err":       rollbackErr,
+						"query_err": err,
+					})
+				} else {
+					logger.Error("could not rollback tx for querying message", rollbackErr, watermill.LogFields{
+						"query_err": err,
+					})
+				}
 			}
 		} else {
 			commitErr := tx.Commit()
@@ -307,7 +332,17 @@ func (s *Subscriber) query(
 		"query":      selectQuery.Query,
 		"query_args": sqlArgsToLog(selectQuery.Args),
 	})
-	rows, err := tx.QueryContext(ctx, selectQuery.Query, selectQuery.Args...)
+	// Only the SELECT and the fetching of its rows are interrupted on closing: the SELECT may wait a long
+	// time for the consumer group's lock, held by another subscriber for its whole batch. The acks and
+	// the commit keep ctx, so the messages acked before closing are still committed.
+	// cancelOnClosing cancels selectCtx if Close() is called before stopCancelingSelectOnClosing runs,
+	// right after the fetch.
+	selectCtx, cancelSelect := context.WithCancel(ctx)
+	defer cancelSelect()
+	stopCancelingSelectOnClosing := s.cancelOnClosing(cancelSelect)
+	defer stopCancelingSelectOnClosing()
+
+	rows, err := tx.QueryContext(selectCtx, selectQuery.Query, selectQuery.Args...)
 	if err != nil {
 		return false, fmt.Errorf("could not query message: %w", err)
 	}
@@ -334,6 +369,13 @@ func (s *Subscriber) query(
 		}
 
 		messageRows = append(messageRows, row)
+	}
+
+	stopCancelingSelectOnClosing()
+	if err := selectCtx.Err(); err != nil {
+		// The fetched rows may be incomplete: with some drivers (e.g. pgx), rows.Next() of an
+		// interrupted fetch returns false, as at the end of the rows.
+		return false, fmt.Errorf("querying messages interrupted: %w", err)
 	}
 
 	for _, row := range messageRows {
@@ -471,7 +513,17 @@ ResendLoop:
 			msg.SetContext(msgCtx)
 
 			if s.config.ResendInterval != 0 {
-				time.Sleep(s.config.ResendInterval)
+				select {
+				case <-time.After(s.config.ResendInterval):
+
+				case <-s.closing:
+					logger.Info("Discarding queued message, subscriber closing", nil)
+					return false
+
+				case <-ctx.Done():
+					logger.Info("Discarding queued message, context canceled", nil)
+					return false
+				}
 			}
 
 			continue ResendLoop
@@ -488,14 +540,64 @@ ResendLoop:
 }
 
 func (s *Subscriber) Close() error {
-	if !atomic.CompareAndSwapUint32(&s.closed, 0, 1) {
+	s.subscribeLock.Lock()
+	if s.closed {
+		s.subscribeLock.Unlock()
 		return nil
 	}
-
+	s.closed = true
 	close(s.closing)
+	s.subscribeLock.Unlock()
+
 	s.subscribeWg.Wait()
 
 	return nil
+}
+
+func (s *Subscriber) isClosed() bool {
+	s.subscribeLock.Lock()
+	defer s.subscribeLock.Unlock()
+	return s.closed
+}
+
+func (s *Subscriber) addToSubscribeWgUnlessClosed() bool {
+	s.subscribeLock.Lock()
+	defer s.subscribeLock.Unlock()
+
+	if s.closed {
+		return false
+	}
+	s.subscribeWg.Add(1)
+	return true
+}
+
+func (s *Subscriber) cancelOnClosing(cancel context.CancelFunc) (stop func()) {
+	stopping := make(chan struct{})
+	stopped := make(chan struct{})
+
+	go func() {
+		defer close(stopped)
+
+		select {
+		case <-s.closing:
+			cancel()
+		case <-stopping:
+		}
+	}()
+
+	return sync.OnceFunc(func() {
+		close(stopping)
+		<-stopped
+	})
+}
+
+func (s *Subscriber) closingOrCanceled(ctx context.Context) bool {
+	select {
+	case <-s.closing:
+		return true
+	default:
+		return ctx.Err() != nil
+	}
 }
 
 func (s *Subscriber) SubscribeInitialize(topic string) error {
