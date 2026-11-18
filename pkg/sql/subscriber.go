@@ -275,8 +275,10 @@ func (s *Subscriber) query(
 		return false, fmt.Errorf("could not begin tx for querying: %w", err)
 	}
 
+	var rollback bool
+
 	defer func() {
-		if err != nil {
+		if err != nil || rollback {
 			rollbackErr := tx.Rollback()
 			if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
 				logger.Error("could not rollback tx for querying message", rollbackErr, watermill.LogFields{
@@ -338,11 +340,17 @@ func (s *Subscriber) query(
 	ackedRows := make([]Row, 0, len(messageRows))
 
 	for _, row := range messageRows {
-		acked, err := s.processMessage(ctx, topic, row, tx, out, logger)
+		acked, txUsed, err := s.processMessage(ctx, topic, row, tx, out, logger)
 		if err != nil {
 			return false, fmt.Errorf("could not process message: %w", err)
 		}
 		if !acked {
+			if txUsed {
+				// The handler's changes can't be undone without the changes of the messages acked before it,
+				// so the whole batch is read again.
+				rollback = true
+				return false, nil
+			}
 			break
 		}
 
@@ -394,7 +402,7 @@ func (s *Subscriber) processMessage(
 	tx Tx,
 	out chan *message.Message,
 	logger watermill.LoggerAdapter,
-) (bool, error) {
+) (acked bool, txUsed bool, err error) {
 	if *s.config.AckDeadline != 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, *s.config.AckDeadline)
@@ -410,7 +418,7 @@ func (s *Subscriber) processMessage(
 		},
 	)
 	if err != nil {
-		return false, fmt.Errorf("could not get consumed message query: %w", err)
+		return false, false, fmt.Errorf("could not get consumed message query: %w", err)
 	}
 	if !consumedQuery.IsZero() {
 		logger.Trace("Executing query to confirm message consumed", watermill.LogFields{
@@ -420,7 +428,7 @@ func (s *Subscriber) processMessage(
 
 		_, err := tx.ExecContext(ctx, consumedQuery.Query, consumedQuery.Args...)
 		if err != nil {
-			return false, fmt.Errorf("cannot send consumed query: %w", err)
+			return false, false, fmt.Errorf("cannot send consumed query: %w", err)
 		}
 
 		logger.Trace("Executed query to confirm message consumed", nil)
@@ -431,9 +439,12 @@ func (s *Subscriber) processMessage(
 	})
 	logger.Trace("Received message", nil)
 
-	msgCtx := setTxToContext(ctx, tx)
+	mtx := &messageTx{tx: tx}
+	msgCtx := setTxToContext(ctx, mtx)
 
-	return s.sendMessage(msgCtx, row.Msg, out, logger), nil
+	acked = s.sendMessage(msgCtx, row.Msg, out, logger, &mtx.used)
+
+	return acked, mtx.used.Load(), nil
 }
 
 // sendMessages sends messages on the output channel.
@@ -442,6 +453,7 @@ func (s *Subscriber) sendMessage(
 	msg *message.Message,
 	out chan *message.Message,
 	logger watermill.LoggerAdapter,
+	txUsed *atomic.Bool,
 ) (acked bool) {
 	msgCtx, cancel := context.WithCancel(ctx)
 	msg.SetContext(msgCtx)
@@ -468,14 +480,20 @@ ResendLoop:
 			return true
 
 		case <-msg.Nacked():
+			// Also before a rollback: the batch is read again right after it, which would skip the interval.
+			if s.config.ResendInterval != 0 {
+				time.Sleep(s.config.ResendInterval)
+			}
+
+			if txUsed.Load() {
+				logger.Debug("Message nacked, rolling back the batch", nil)
+				return false
+			}
+
 			//message nacked, try resending
 			logger.Debug("Message nacked, resending", nil)
 			msg = msg.Copy()
 			msg.SetContext(msgCtx)
-
-			if s.config.ResendInterval != 0 {
-				time.Sleep(s.config.ResendInterval)
-			}
 
 			continue ResendLoop
 
