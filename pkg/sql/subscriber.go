@@ -338,6 +338,13 @@ func (s *Subscriber) query(
 
 	// Next also returns false when the query failed during execution (for example, on a serialization failure
 	// between concurrent subscribers). The transaction is aborted then, so the rows read so far can't be acked.
+	//
+	// Native pgx reports such errors only here. Without this check a failed query would look like an empty
+	// topic: the BackoffManager would not see the error, so instead of retrying a serialization failure at
+	// once, the subscriber would sleep a full PollInterval while messages are waiting. With any driver, rows
+	// read before the failure would reach the handler, the ack would then fail in the aborted transaction,
+	// and the same messages would be delivered again. Returning the error before anything is delivered
+	// rolls the transaction back and hands the real cause to the BackoffManager.
 	if errRows, ok := rows.(rowsWithErr); ok {
 		if rowsErr := errRows.Err(); rowsErr != nil {
 			return false, fmt.Errorf("could not read queried messages: %w", rowsErr)
