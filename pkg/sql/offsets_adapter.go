@@ -3,6 +3,7 @@ package sql
 type AckMessageQueryParams struct {
 	Topic         string
 	LastRow       Row
+	// Rows contains only the rows that were acknowledged.
 	Rows          []Row
 	ConsumerGroup string
 }

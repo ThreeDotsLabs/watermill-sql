@@ -318,7 +318,6 @@ func (s *Subscriber) query(
 		}
 	}()
 
-	var lastOffset int64
 	var lastRow Row
 
 	messageRows := make([]Row, 0)
@@ -336,6 +335,8 @@ func (s *Subscriber) query(
 		messageRows = append(messageRows, row)
 	}
 
+	ackedRows := make([]Row, 0, len(messageRows))
+
 	for _, row := range messageRows {
 		acked, err := s.processMessage(ctx, topic, row, tx, out, logger)
 		if err != nil {
@@ -345,11 +346,11 @@ func (s *Subscriber) query(
 			break
 		}
 
-		lastOffset = row.Offset
 		lastRow = row
+		ackedRows = append(ackedRows, row)
 	}
 
-	if lastOffset == 0 {
+	if len(ackedRows) == 0 {
 		return true, nil
 	}
 
@@ -357,7 +358,7 @@ func (s *Subscriber) query(
 		AckMessageQueryParams{
 			Topic:         topic,
 			LastRow:       lastRow,
-			Rows:          messageRows,
+			Rows:          ackedRows,
 			ConsumerGroup: s.config.ConsumerGroup,
 		},
 	)
@@ -365,21 +366,23 @@ func (s *Subscriber) query(
 		return false, fmt.Errorf("could not get ack message query: %w", err)
 	}
 
-	logger.Trace("Executing ack message query", watermill.LogFields{
-		"query":      ackQuery.Query,
-		"query_args": sqlArgsToLog(ackQuery.Args),
-	})
+	if !ackQuery.IsZero() {
+		logger.Trace("Executing ack message query", watermill.LogFields{
+			"query":      ackQuery.Query,
+			"query_args": sqlArgsToLog(ackQuery.Args),
+		})
 
-	result, err := tx.ExecContext(ctx, ackQuery.Query, ackQuery.Args...)
-	if err != nil {
-		return false, fmt.Errorf("could not get args for acking the message: %w", err)
+		result, err := tx.ExecContext(ctx, ackQuery.Query, ackQuery.Args...)
+		if err != nil {
+			return false, fmt.Errorf("could not get args for acking the message: %w", err)
+		}
+
+		rowsAffected, _ := result.RowsAffected()
+
+		logger.Trace("Executed ack message query", watermill.LogFields{
+			"rows_affected": rowsAffected,
+		})
 	}
-
-	rowsAffected, _ := result.RowsAffected()
-
-	logger.Trace("Executed ack message query", watermill.LogFields{
-		"rows_affected": rowsAffected,
-	})
 
 	return false, nil
 }
