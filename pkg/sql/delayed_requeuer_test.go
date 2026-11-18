@@ -3,6 +3,8 @@ package sql_test
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,6 +41,7 @@ func TestPostgreSQLDelayedRequeuer(t *testing.T) {
 	router.AddMiddleware(delayedRequeuer.Middleware()...)
 
 	var receivedMessages []string
+	var receivedMessagesLock sync.Mutex
 
 	router.AddConsumerHandler(
 		"test",
@@ -50,7 +53,9 @@ func TestPostgreSQLDelayedRequeuer(t *testing.T) {
 				return fmt.Errorf("error")
 			}
 
+			receivedMessagesLock.Lock()
 			receivedMessages = append(receivedMessages, msg.UUID)
+			receivedMessagesLock.Unlock()
 
 			return nil
 		},
@@ -78,7 +83,11 @@ func TestPostgreSQLDelayedRequeuer(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.EventuallyWithT(t, func(t *assert.CollectT) {
-		assert.Equal(t, []string{"1", "3"}, receivedMessages)
+		receivedMessagesLock.Lock()
+		received := slices.Clone(receivedMessages)
+		receivedMessagesLock.Unlock()
+
+		assert.Equal(t, []string{"1", "3"}, received)
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -107,6 +116,7 @@ func TestMySQLDelayedRequeuer(t *testing.T) {
 	router.AddMiddleware(delayedRequeuer.Middleware()...)
 
 	var receivedMessages []string
+	var receivedMessagesLock sync.Mutex
 
 	router.AddConsumerHandler(
 		"test",
@@ -119,7 +129,9 @@ func TestMySQLDelayedRequeuer(t *testing.T) {
 				return fmt.Errorf("error")
 			}
 
+			receivedMessagesLock.Lock()
 			receivedMessages = append(receivedMessages, msg.UUID)
+			receivedMessagesLock.Unlock()
 
 			return nil
 		},
@@ -147,6 +159,10 @@ func TestMySQLDelayedRequeuer(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.EventuallyWithT(t, func(t *assert.CollectT) {
-		assert.Equal(t, []string{"1", "3"}, receivedMessages)
+		receivedMessagesLock.Lock()
+		received := slices.Clone(receivedMessages)
+		receivedMessagesLock.Unlock()
+
+		assert.Equal(t, []string{"1", "3"}, received)
 	}, 1*time.Second, 100*time.Millisecond)
 }
