@@ -269,7 +269,9 @@ func (s sideEffects) queryCount(messageUUID string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	if !rows.Next() {
 		return 0, errors.New("count query returned no rows")
