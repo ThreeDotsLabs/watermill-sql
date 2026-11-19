@@ -23,6 +23,17 @@ type MySQLQueueSchema struct {
 	// By default, it's JSON. If your payload is not JSON, you can use LONGBLOB.
 	GeneratePayloadType func(topic string) string
 
+	// BindJSONAsText makes the publisher bind the metadata, and the payload when the payload column type is JSON,
+	// as text instead of []byte.
+	//
+	// Enable it when the driver interpolates the parameters into the query on the client (interpolateParams=true).
+	// Such a driver sends []byte as a binary string, which a JSON column rejects with
+	// "Error 3144: Cannot create a JSON value from a string with CHARACTER SET 'binary'".
+	//
+	// When enabled, the payload column type from GeneratePayloadType (JSON when not set) must match the real column,
+	// also if the table is not created by this adapter, and the metadata column must be JSON.
+	BindJSONAsText bool
+
 	// GenerateMessagesTableName may be used to override how the messages table name is generated.
 	GenerateMessagesTableName func(topic string) string
 
@@ -57,7 +68,7 @@ func (s MySQLQueueSchema) InsertQuery(params InsertQueryParams) (Query, error) {
 		mysqlQueueInsertMarkers(len(params.Msgs)),
 	)
 
-	args, err := defaultInsertArgs(params.Msgs)
+	args, err := defaultInsertArgs(params.Msgs, newJSONTextArgs(s.BindJSONAsText, s.payloadColumnType, params.Topic))
 	if err != nil {
 		return Query{}, err
 	}

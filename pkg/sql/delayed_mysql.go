@@ -22,6 +22,11 @@ type DelayedMySQLPublisherConfig struct {
 
 	// DisableInitializeSchema option disables auto initializing schema
 	DisableInitializeSchema bool
+
+	// BindJSONAsText makes the publisher bind the payload and the metadata as text instead of []byte.
+	// Enable it when the driver interpolates the parameters into the query on the client (interpolateParams=true).
+	// See MySQLQueueSchema.BindJSONAsText.
+	BindJSONAsText bool
 }
 
 func (c *DelayedMySQLPublisherConfig) setDefaults() {
@@ -37,7 +42,9 @@ func NewDelayedMySQLPublisher(db ContextExecutor, config DelayedMySQLPublisherCo
 
 	publisherConfig := PublisherConfig{
 		SchemaAdapter: delayedMySQLSchemaAdapter{
-			MySQLQueueSchema: MySQLQueueSchema{},
+			MySQLQueueSchema: MySQLQueueSchema{
+				BindJSONAsText: config.BindJSONAsText,
+			},
 		},
 		AutoInitializeSchema: !config.DisableInitializeSchema,
 	}
@@ -159,7 +166,7 @@ func (a delayedMySQLSchemaAdapter) InsertQuery(params InsertQueryParams) (Query,
 		delayedMySQLInsertMarkers(len(params.Msgs)),
 	)
 
-	args, err := delayedMySQLInsertArgs(params.Msgs)
+	args, err := delayedMySQLInsertArgs(params.Msgs, newJSONTextArgs(a.BindJSONAsText, a.payloadColumnType, params.Topic))
 	if err != nil {
 		return Query{}, err
 	}
@@ -177,7 +184,7 @@ func delayedMySQLInsertMarkers(count int) string {
 	return strings.TrimRight(result.String(), ",")
 }
 
-func delayedMySQLInsertArgs(msgs message.Messages) ([]any, error) {
+func delayedMySQLInsertArgs(msgs message.Messages, textArgs jsonTextArgs) ([]any, error) {
 	var args []any
 
 	for _, msg := range msgs {
@@ -186,7 +193,7 @@ func delayedMySQLInsertArgs(msgs message.Messages) ([]any, error) {
 			return nil, fmt.Errorf("could not marshal metadata into JSON for message %s: %w", msg.UUID, err)
 		}
 
-		args = append(args, msg.UUID, msg.Payload, metadata)
+		args = append(args, msg.UUID, textArgs.payload(msg.Payload), textArgs.metadata(metadata))
 
 		// Extract delayed_until from metadata
 		delayedUntilStr := msg.Metadata.Get(delay.DelayedUntilKey)
