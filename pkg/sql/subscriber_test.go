@@ -4,6 +4,7 @@ import (
 	"context"
 	stdSQL "database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -416,4 +417,43 @@ func TestSubscriberQuery_AllMessagesAcked(t *testing.T) {
 	assert.False(t, tx.rolledBack)
 	require.Len(t, tx.executedQueries, 1)
 	tx.mu.Unlock()
+}
+
+func TestLogIfTableNameTooLong(t *testing.T) {
+	name63 := strings.Repeat("t", 61) + ".t"
+
+	testCases := map[string]bool{
+		`"` + name63 + `"`:                   false,
+		`"` + name63 + `t"`:                  true,
+		`"schema"."` + name63 + `"`:          false,
+		`"schema"."` + name63 + `t"`:         true,
+		"`" + strings.Repeat("t", 100) + "`": false,
+	}
+
+	for tableName, expectedLog := range testCases {
+		logs := watermill.NewCaptureLogger()
+
+		logIfTableNameTooLong(logs, "topic", tableName)
+
+		assert.Equal(t, expectedLog, len(logs.Captured()[watermill.InfoLogLevel]) == 1, tableName)
+	}
+}
+
+func TestSubscriber_DisableTableNameLengthWarning(t *testing.T) {
+	tooLongTopic := strings.Repeat("t", 64)
+
+	for _, disabled := range []bool{false, true} {
+		logs := watermill.NewCaptureLogger()
+		sub := &Subscriber{
+			config: SubscriberConfig{
+				SchemaAdapter:                 DefaultPostgreSQLSchema{},
+				DisableTableNameLengthWarning: disabled,
+			},
+			logger: logs,
+		}
+
+		sub.logTooLongTableNames(tooLongTopic)
+
+		assert.Equal(t, !disabled, len(logs.Captured()[watermill.InfoLogLevel]) == 1, "disabled: %t", disabled)
+	}
 }

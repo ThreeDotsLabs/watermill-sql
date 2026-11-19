@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -58,6 +59,10 @@ type SubscriberConfig struct {
 
 	// InitializeSchema option enables initializing schema on making subscription.
 	InitializeSchema bool
+
+	// DisableTableNameLengthWarning disables the warning logged by Subscribe when a table name is longer
+	// than 63 bytes, which PostgreSQL silently truncates, so topics sharing the beginning of the name share one table.
+	DisableTableNameLengthWarning bool
 }
 
 func (c *SubscriberConfig) setDefaults() {
@@ -175,6 +180,8 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (o <-chan *mes
 	if err = validateTopicName(topic); err != nil {
 		return nil, err
 	}
+
+	s.logTooLongTableNames(topic)
 
 	if s.config.InitializeSchema {
 		if err := s.SubscribeInitialize(topic); err != nil {
@@ -513,4 +520,49 @@ func (s *Subscriber) SubscribeInitialize(topic string) error {
 		s.config.SchemaAdapter,
 		s.config.OffsetsAdapter,
 	)
+}
+
+// Implemented by the built-in adapters. Adapters without them aren't checked for too long table names.
+type messagesTableNamer interface {
+	MessagesTable(topic string) string
+}
+
+type messagesOffsetsTableNamer interface {
+	MessagesOffsetsTable(topic string) string
+}
+
+func (s *Subscriber) logTooLongTableNames(topic string) {
+	if s.config.DisableTableNameLengthWarning {
+		return
+	}
+
+	if a, ok := s.config.SchemaAdapter.(messagesTableNamer); ok {
+		logIfTableNameTooLong(s.logger, topic, a.MessagesTable(topic))
+	}
+	if a, ok := s.config.OffsetsAdapter.(messagesOffsetsTableNamer); ok {
+		logIfTableNameTooLong(s.logger, topic, a.MessagesOffsetsTable(topic))
+	}
+}
+
+// PostgreSQL silently truncates identifiers longer than 63 bytes (NAMEDATALEN-1), so topics sharing
+// the beginning of a long table name share one table. It's only logged: rejecting the topic would break
+// deployments that work today.
+func logIfTableNameTooLong(logger watermill.LoggerAdapter, topic string, tableName string) {
+	// Each part of a schema-qualified name has its own limit. Topics may contain dots, so only dots between
+	// quoted parts separate them.
+	for _, part := range strings.Split(tableName, `"."`) {
+		// MySQL quotes names with backticks and fails loudly on too long names.
+		if strings.HasPrefix(part, "`") {
+			return
+		}
+
+		if len(strings.Trim(part, `"`)) > 63 {
+			logger.Info(
+				"Warning: PostgreSQL table name is longer than 63 bytes and will be truncated, "+
+					"topics sharing the beginning of the name share one table",
+				watermill.LogFields{"topic": topic, "table_name": tableName},
+			)
+			return
+		}
+	}
 }
