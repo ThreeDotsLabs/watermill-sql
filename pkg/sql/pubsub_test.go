@@ -291,10 +291,11 @@ func TestMySQLPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
 	features := tests.Features{
-		ConsumerGroups:      true,
-		ExactlyOnceDelivery: true,
-		GuaranteedOrder:     true,
-		Persistent:          true,
+		ConsumerGroups:       true,
+		ExactlyOnceDelivery:  true,
+		GuaranteedOrder:      true,
+		GuaranteedTotalOrder: true,
+		Persistent:           true,
 	}
 
 	tests.TestPubSub(
@@ -309,10 +310,11 @@ func TestPostgreSQLPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
 	features := tests.Features{
-		ConsumerGroups:      true,
-		ExactlyOnceDelivery: true,
-		GuaranteedOrder:     true,
-		Persistent:          true,
+		ConsumerGroups:       true,
+		ExactlyOnceDelivery:  true,
+		GuaranteedOrder:      true,
+		GuaranteedTotalOrder: true,
+		Persistent:           true,
 	}
 
 	tests.TestPubSub(
@@ -327,10 +329,11 @@ func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
 	features := tests.Features{
-		ConsumerGroups:      true,
-		ExactlyOnceDelivery: true,
-		GuaranteedOrder:     true,
-		Persistent:          true,
+		ConsumerGroups:       true,
+		ExactlyOnceDelivery:  true,
+		GuaranteedOrder:      true,
+		GuaranteedTotalOrder: true,
+		Persistent:           true,
 	}
 
 	tests.TestPubSub(
@@ -345,10 +348,11 @@ func TestPgxPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
 	features := tests.Features{
-		ConsumerGroups:      true,
-		ExactlyOnceDelivery: true,
-		GuaranteedOrder:     true,
-		Persistent:          true,
+		ConsumerGroups:       true,
+		ExactlyOnceDelivery:  true,
+		GuaranteedOrder:      true,
+		GuaranteedTotalOrder: true,
+		Persistent:           true,
 	}
 
 	tests.TestPubSub(
@@ -722,6 +726,7 @@ func TestConcurrentSubscribe_different_bulk_sizes(t *testing.T) {
 						ConsumerGroups:                      true,
 						ExactlyOnceDelivery:                 true,
 						GuaranteedOrder:                     true,
+						GuaranteedTotalOrder:                true,
 						GuaranteedOrderWithSingleSubscriber: true,
 						Persistent:                          true,
 					},
