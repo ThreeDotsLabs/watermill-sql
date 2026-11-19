@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"database/sql/driver"
 	"math"
 	"testing"
 
@@ -208,27 +209,37 @@ func TestXID8_Value(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    XID8
-		expected uint64
+		expected driver.Value
 	}{
 		{
 			name:     "zero value",
 			input:    XID8(0),
-			expected: 0,
+			expected: int64(0),
 		},
 		{
 			name:     "small positive value",
 			input:    XID8(12345),
-			expected: 12345,
+			expected: int64(12345),
+		},
+		{
+			name:     "max int64 value",
+			input:    XID8(math.MaxInt64),
+			expected: int64(math.MaxInt64),
+		},
+		{
+			name:     "max int64 value plus one",
+			input:    XID8(math.MaxInt64 + 1),
+			expected: "9223372036854775808",
 		},
 		{
 			name:     "max uint64 value",
 			input:    XID8(math.MaxUint64),
-			expected: math.MaxUint64,
+			expected: "18446744073709551615",
 		},
 		{
 			name:     "real postgres xid8 value",
 			input:    XID8(732406),
-			expected: 732406,
+			expected: int64(732406),
 		},
 	}
 
@@ -236,6 +247,7 @@ func TestXID8_Value(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			value, err := tt.input.Value()
 			require.NoError(t, err)
+			assert.True(t, driver.IsValue(value), "%T is not a valid driver.Value", value)
 			assert.Equal(t, tt.expected, value)
 		})
 	}
