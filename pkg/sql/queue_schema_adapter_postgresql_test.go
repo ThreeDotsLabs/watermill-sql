@@ -43,7 +43,10 @@ func TestPostgreSQLQueueSchemaAdapter(t *testing.T) {
 
 	topic := watermill.NewUUID()
 
-	messages, err := sub.Subscribe(context.Background(), topic)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	messages, err := sub.Subscribe(ctx, topic)
 	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
